@@ -1,0 +1,92 @@
+# # # # # Directories # # # # # # # # # #
+#
+ROOT_DIR := $(realpath ${CURDIR}/..)
+# directory for the building
+BUILD_DIR := build/
+# directory for the executable
+BIN_DIR := ${ROOT_DIR}/bin/
+
+TARGET := ragnar.exec
+
+SRC_DIR := ${ROOT_DIR}/src
+BUILD_SRC_DIR := src
+
+# external libraries
+EXT_DIR := ${ROOT_DIR}/extern
+
+# # # # # Settings # # # # # # # # # # # #
+#
+
+DEFINITIONS := -DOMPENABLED
+
+DEBUGMODE ?= n
+VERBOSEMODE ?= n
+
+ifeq ($(strip ${VERBOSEMODE}), y)
+	HIDE =
+	PREPFLAGS = -DVERBOSE -Werror
+else
+	HIDE = @
+endif
+
+# 3-rd party library configurations
+HDF5_LINK_DEPENDS := /usr/local/lib/libhdf5_cpp.a
+
+PREPFLAGS := ${PREPFLAGS}
+
+# # # # # Compiler and flags # # # # # # #
+#
+CXX := /usr/local/bin/h5c++
+LINK := ${CXX}
+CXXSTANDARD := -std=c++17
+ifeq ($(strip ${DEBUGMODE}), n)
+	CFLAGS := -O3
+else
+	CFLAGS := -O0 -g
+endif
+
+# warning flags
+WARNFLAGS := -Wall -Wextra -pedantic
+
+CFLAGS := $(CFLAGS) $(WARNFLAGS) $(PREPFLAGS)
+LIBS :=
+
+# # # # # Targets # # # # # # # # # # # # # #
+#
+.PHONY: ragnar clean cleanlib
+
+default: ragnar
+
+ragnar : ${BIN_DIR}/${TARGET}
+
+# # # # # File collection # # # # # # # # # # #
+#
+# Src files
+SRCS := $(SRCS) $(shell find ${SRC_DIR} -name "*.cpp" -o -name "*.c")
+OBJS := $(subst ${SRC_DIR},${BUILD_SRC_DIR},$(SRCS:%=%.o))
+DEPS := $(OBJS:.o=.d)
+
+INC_DIRS := $(shell find ${SRC_DIR} -type d) ${EXT_DIR} /usr/local/include ${EXT_DIR}/HighFive/include
+INCFLAGS := $(addprefix -I,${INC_DIRS})
+
+# # # # # Link/compile # # # # # # # # # # # # # #
+#
+
+compile_command := ${CXX} ${CXXSTANDARD} $(INCFLAGS) $(DEFINITIONS) $(CFLAGS) -MMD
+link_command := ${LINK} $(LDFLAGS)
+
+${BIN_DIR}/${TARGET} : $(MAIN_OBJS) $(OBJS)
+	@echo [L]inking $(notdir $@) from $<
+	$(HIDE)mkdir -p ${BIN_DIR}
+	$(HIDE)${link_command} $^ -o $@ $(LIBS)
+
+${BUILD_SRC_DIR}/%.o : ${SRC_DIR}/%
+	@echo [C]ompiling \`src\`: $(subst ${ROOT_DIR}/,,$<)
+	$(HIDE)mkdir -p $(dir $@)
+	$(HIDE)${compile_command} -c $< -o $@
+
+-include $(DEPS) $(MAIN_DEPS)
+
+clean:
+	rm -rf ${BUILD_SRC_DIR} ${BUILD_TEST_DIR} ${BUILD_VIS_DIR}
+	rm -rf ${BIN_DIR}
