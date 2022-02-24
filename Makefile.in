@@ -40,7 +40,7 @@ CXX := /usr/local/bin/h5c++
 LINK := ${CXX}
 CXXSTANDARD := -std=c++17
 ifeq ($(strip ${DEBUGMODE}), n)
-	CFLAGS := -O3
+	CFLAGS := -O3 -Ofast
 else
 	CFLAGS := -O0 -g
 endif

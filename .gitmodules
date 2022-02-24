@@ -1,3 +1,6 @@
 [submodule "extern/HighFive"]
 	path = extern/HighFive
 	url = git@github.com:BlueBrain/HighFive.git
+[submodule "extern/pbar"]
+	path = extern/pbar
+	url = git@github.com:Jvanrhijn/pbar.git
