@@ -1,9 +1,9 @@
 #ifndef IO_H
 #define IO_H
 
-#include <HighFive/H5DataSet.hpp>
-#include <HighFive/H5DataSpace.hpp>
-#include <HighFive/H5File.hpp>
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
+#include <highfive/H5File.hpp>
 
 #include <vector>
 

@@ -41,41 +41,43 @@ void Simulation::run() {
   std::vector<Particle> leptons;
   std::vector<Particle> photons;
 
+  const char* filename = "../prtl.tot.00100";
+
   {
     // read electrons
     std::vector<double> u_arr, v_arr, w_arr;
-    IO::readArray("../prtl.tot.00100", "u_1", u_arr);
-    IO::readArray("../prtl.tot.00100", "v_1", v_arr);
-    IO::readArray("../prtl.tot.00100", "w_1", w_arr);
-    for (std::size_t i {0}; i < 100; ++i) {
+    IO::readArray(filename, "u_1", u_arr);
+    IO::readArray(filename, "v_1", v_arr);
+    IO::readArray(filename, "w_1", w_arr);
+    for (std::size_t i {0}; i < u_arr.size(); ++i) {
       double gamma
         = std::sqrt(1.0 + SQR(u_arr[i]) + SQR(v_arr[i]) + SQR(w_arr[i]));
       leptons.push_back(Particle {u_arr[i], v_arr[i], w_arr[i], gamma, 0});
     }
     // read positrons
-    IO::readArray("../prtl.tot.00100", "u_2", u_arr);
-    IO::readArray("../prtl.tot.00100", "v_2", v_arr);
-    IO::readArray("../prtl.tot.00100", "w_2", w_arr);
-    for (std::size_t i {0}; i < 100; ++i) {
+    IO::readArray(filename, "u_2", u_arr);
+    IO::readArray(filename, "v_2", v_arr);
+    IO::readArray(filename, "w_2", w_arr);
+    for (std::size_t i {0}; i < u_arr.size(); ++i) {
       double gamma
         = std::sqrt(1.0 + SQR(u_arr[i]) + SQR(v_arr[i]) + SQR(w_arr[i]));
       leptons.push_back(Particle {u_arr[i], v_arr[i], w_arr[i], gamma, 0});
     }
     // read photons
-    IO::readArray("../prtl.tot.00100", "u_3", u_arr);
-    IO::readArray("../prtl.tot.00100", "v_3", v_arr);
-    IO::readArray("../prtl.tot.00100", "w_3", w_arr);
-    for (std::size_t i {0}; i < 100; ++i) {
+    IO::readArray(filename, "u_3", u_arr);
+    IO::readArray(filename, "v_3", v_arr);
+    IO::readArray(filename, "w_3", w_arr);
+    for (std::size_t i {0}; i < u_arr.size(); ++i) {
       double energy = std::sqrt(SQR(u_arr[i]) + SQR(v_arr[i]) + SQR(w_arr[i]));
       photons.push_back(Particle {u_arr[i], v_arr[i], w_arr[i], energy, 0});
     }
   }
 
-  ComptonScatter(leptons, photons, 1.0);
+  ComptonScatter(leptons, photons, 0.1);
 
   std::vector<double> energies;
   for (std::size_t i = 0; i < photons.size(); i++) {
     energies.push_back(photons[i].energy);
   }
-  IO::writeArray<double>("ssc5.h5", "e_ph", energies);
+  IO::writeArray<double>("ssc01.h5", "e_ph", energies);
 }
