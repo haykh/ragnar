@@ -47,7 +47,7 @@ void Simulation::run() {
     IO::readArray("../prtl.tot.00100", "u_1", u_arr);
     IO::readArray("../prtl.tot.00100", "v_1", v_arr);
     IO::readArray("../prtl.tot.00100", "w_1", w_arr);
-    for (std::size_t i {0}; i < u_arr.size(); ++i) {
+    for (std::size_t i {0}; i < 100; ++i) {
       double gamma
         = std::sqrt(1.0 + SQR(u_arr[i]) + SQR(v_arr[i]) + SQR(w_arr[i]));
       leptons.push_back(Particle {u_arr[i], v_arr[i], w_arr[i], gamma, 0});
@@ -56,7 +56,7 @@ void Simulation::run() {
     IO::readArray("../prtl.tot.00100", "u_2", u_arr);
     IO::readArray("../prtl.tot.00100", "v_2", v_arr);
     IO::readArray("../prtl.tot.00100", "w_2", w_arr);
-    for (std::size_t i {0}; i < u_arr.size(); ++i) {
+    for (std::size_t i {0}; i < 100; ++i) {
       double gamma
         = std::sqrt(1.0 + SQR(u_arr[i]) + SQR(v_arr[i]) + SQR(w_arr[i]));
       leptons.push_back(Particle {u_arr[i], v_arr[i], w_arr[i], gamma, 0});
@@ -65,7 +65,7 @@ void Simulation::run() {
     IO::readArray("../prtl.tot.00100", "u_3", u_arr);
     IO::readArray("../prtl.tot.00100", "v_3", v_arr);
     IO::readArray("../prtl.tot.00100", "w_3", w_arr);
-    for (std::size_t i {0}; i < u_arr.size(); ++i) {
+    for (std::size_t i {0}; i < 100; ++i) {
       double energy = std::sqrt(SQR(u_arr[i]) + SQR(v_arr[i]) + SQR(w_arr[i]));
       photons.push_back(Particle {u_arr[i], v_arr[i], w_arr[i], energy, 0});
     }

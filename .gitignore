@@ -3,3 +3,4 @@ bin
 build
 __pycache__
 prtl.tot.*
+spec.tot.*
