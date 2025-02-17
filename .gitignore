@@ -1,0 +1,8 @@
+bin/
+build/
+compile_commands.json
+.vscode
+*.h5
+.cache/
+references/
+tags
