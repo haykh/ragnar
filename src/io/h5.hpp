@@ -23,14 +23,15 @@ namespace rgnr::io::h5 {
         "Number of read quantity exceeds allocated space");
     }
     dataset.select({ 0 }, { size }, { stride }).template read<T>(array.data());
+    // dataset.select({ 0 }, { size / stride }).template read<T>(array.data());
     return dims[0] / stride;
   }
 
   template <typename T, typename A>
-  inline void Write1DArrays(HighFive::File     file,
-                            const std::string& name,
-                            A                  array,
-                            std::size_t        size) {
+  inline void Write1DArray(HighFive::File     file,
+                           const std::string& name,
+                           A                  array,
+                           std::size_t        size) {
     std::cout << "Writing " << name << " to " << file.getName() << " ..."
               << std::endl;
     auto dataset = file.createDataSet<T>(name, HighFive::DataSpace({ size }));

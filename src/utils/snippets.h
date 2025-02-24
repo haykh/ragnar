@@ -35,8 +35,14 @@ namespace rgnr {
     return std::abs(a) <= eps;
   }
 
+  auto TemplateReplace(const std::string&, const std::map<std::string, real_t>&)
+    -> std::string;
+
   template <class T>
   auto ToHumanReadable(T, bool) -> std::string;
+
+  template <class T>
+  auto ToShort(T) -> std::string;
 
 } // namespace rgnr
 

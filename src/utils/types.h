@@ -10,8 +10,28 @@ enum in {
   z = 1
 };
 
+enum class Quantity {
+  Energy,
+};
+
+enum class EnergyUnits {
+  eV,
+  MeV,
+  GeV,
+  mc2,
+};
+
+template <typename T>
+struct Unit {
+  Quantity quantity;
+  T        unit;
+
+  Unit(const Quantity& q, const T& unit) : quantity { q }, unit { unit } {}
+};
+
 constexpr bool IGNORE_COORDS = true;
 constexpr bool USE_SUFFIX    = true;
 constexpr bool USE_POW10     = false;
+constexpr bool LOGGRID       = true;
 
 #endif // TYPES_H

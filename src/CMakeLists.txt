@@ -1,7 +1,7 @@
 set(EXECUTABLE main.xc)
 set(SUBDIRS utils containers plugins physics)
 set(DEPS rgnr_plugins rgnr_containers rgnr_physics)
-link_libraries(Kokkos::kokkos HighFive)
+link_libraries(Kokkos::kokkos HighFive toml11::toml11)
 
 foreach(subdir ${SUBDIRS})
   add_subdirectory(${subdir})

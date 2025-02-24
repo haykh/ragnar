@@ -4,12 +4,13 @@
 #include "utils/tabulation.h"
 #include "utils/types.h"
 
+#include "containers/dimensionals.hpp"
 #include "containers/particles.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
 
-#include <map>
+#include <stdexcept>
 #include <string>
 
 namespace math = Kokkos;
@@ -26,67 +27,77 @@ namespace rgnr {
 
     template <dim_t D>
     class Kernel {
-      const Kokkos::View<real_t* [3]> U, E, B;
-      const std::size_t               nprtls;
+      const Kokkos::View<real_t* [3]> m_U, m_E, m_B;
+      const std::size_t               m_nprtls;
 
-      const Kokkos::View<real_t*> Ffunc_x, Ffunc_y;
-      const real_t                Ffunc_xmin, Ffunc_xmax;
-      const std::size_t           Ffunc_npoints;
+      const Kokkos::View<real_t*> m_Ffunc_x, m_Ffunc_y;
+      const real_t                m_Ffunc_xmin, m_Ffunc_xmax;
+      const std::size_t           m_Ffunc_npoints;
 
-      const Kokkos::View<real_t*> photon_energy_bins;
+      const Kokkos::View<real_t*> m_photon_energy_bins_mc2;
 
-      Kokkos::Experimental::ScatterView<real_t*> photon_spectrum;
+      Kokkos::Experimental::ScatterView<real_t*> m_photon_spectrum;
 
-      const real_t B0, gamma_syn, photon_energy_at_gamma_syn;
+      const real_t m_B0, m_gamma_syn, m_photon_energy_at_gamma_syn_mc2;
 
     public:
-      Kernel(const Particles<D>&            prtls,
-             const TabulatedFunction<true>& f_func,
-             const Kokkos::View<real_t*>&   photon_energy_bins,
+      Kernel(const Particles<D>&                  prtls,
+             const TabulatedFunction<true>&       f_func,
+             const DimensionalArray<EnergyUnits>& photon_energy_bins,
              const Kokkos::Experimental::ScatterView<real_t*>& photon_spectrum,
-             const std::map<std::string, real_t>&              params)
-        : U { prtls.U }
-        , E { prtls.E }
-        , B { prtls.B }
-        , nprtls { prtls.nactive() }
-        , Ffunc_x { f_func.xArr() }
-        , Ffunc_y { f_func.yArr() }
-        , Ffunc_xmin { f_func.xMin() }
-        , Ffunc_xmax { f_func.xMax() }
-        , Ffunc_npoints { f_func.nPoints() }
-        , photon_energy_bins { photon_energy_bins }
-        , photon_spectrum { photon_spectrum }
-        , B0 { params.at("B0") }
-        , gamma_syn { params.at("gamma_syn") }
-        , photon_energy_at_gamma_syn { params.at(
-            "photon_energy_at_gamma_syn") } {}
+             real_t                                            B0,
+             real_t                                            gamma_syn,
+             const DimensionalQuantity<EnergyUnits>&           eps_at_gamma_syn)
+        : m_U { prtls.U }
+        , m_E { prtls.E }
+        , m_B { prtls.B }
+        , m_nprtls { prtls.nactive() }
+        , m_Ffunc_x { f_func.xArr() }
+        , m_Ffunc_y { f_func.yArr() }
+        , m_Ffunc_xmin { f_func.xMin() }
+        , m_Ffunc_xmax { f_func.xMax() }
+        , m_Ffunc_npoints { f_func.nPoints() }
+        , m_photon_energy_bins_mc2 { photon_energy_bins.data }
+        , m_photon_spectrum { photon_spectrum }
+        , m_B0 { B0 }
+        , m_gamma_syn { gamma_syn }
+        , m_photon_energy_at_gamma_syn_mc2 { eps_at_gamma_syn.value } {
+        if (photon_energy_bins.unit() != EnergyUnits::mc2) {
+          throw std::runtime_error(
+            "photon_energy_bins must be in units of mc^2");
+        }
+        if (eps_at_gamma_syn.unit() != EnergyUnits::mc2) {
+          throw std::runtime_error("eps_at_gamma_syn must be in units of mc^2");
+        }
+      }
 
       KOKKOS_INLINE_FUNCTION
       void operator()(std::size_t pidx, std::size_t eidx) const {
-        const auto photon_e = photon_energy_bins(eidx);
+        const auto photon_e_mc2 = m_photon_energy_bins_mc2(eidx);
 
-        real_t peak_energy, chiR;
-        OmegaSync_ChiR(peak_energy,
+        real_t peak_energy_mc2, chiR;
+        OmegaSync_ChiR(peak_energy_mc2,
                        chiR,
-                       U(pidx, in::x),
-                       U(pidx, in::y),
-                       U(pidx, in::z),
-                       E(pidx, in::x),
-                       E(pidx, in::y),
-                       E(pidx, in::z),
-                       B(pidx, in::x),
-                       B(pidx, in::y),
-                       B(pidx, in::z));
+                       m_U(pidx, in::x),
+                       m_U(pidx, in::y),
+                       m_U(pidx, in::z),
+                       m_E(pidx, in::x),
+                       m_E(pidx, in::y),
+                       m_E(pidx, in::z),
+                       m_B(pidx, in::x),
+                       m_B(pidx, in::y),
+                       m_B(pidx, in::z));
 
-        if (peak_energy > 0.0) {
-          const auto Fval = InterpolateTabulatedFunction<true>(photon_e / peak_energy,
-                                                               Ffunc_x,
-                                                               Ffunc_y,
-                                                               Ffunc_npoints,
-                                                               Ffunc_xmin,
-                                                               Ffunc_xmax);
-          auto photon_spectrum_acc   = photon_spectrum.access();
-          photon_spectrum_acc(eidx) += photon_e * chiR * Fval;
+        if (peak_energy_mc2 > 0.0) {
+          const auto Fval = InterpolateTabulatedFunction<LOGGRID>(
+            photon_e_mc2 / peak_energy_mc2,
+            m_Ffunc_x,
+            m_Ffunc_y,
+            m_Ffunc_npoints,
+            m_Ffunc_xmin,
+            m_Ffunc_xmax);
+          auto photon_spectrum_acc   = m_photon_spectrum.access();
+          photon_spectrum_acc(eidx) += photon_e_mc2 * chiR * Fval;
         }
       }
 
@@ -146,9 +157,9 @@ namespace rgnr {
                                              e_plus_beta_cross_b_z *
                                                e_plus_beta_cross_b_z;
 
-        chiR = math::sqrt(e_plus_beta_cross_b_Sqr - beta_dot_e * beta_dot_e) / B0;
-        peak_energy = photon_energy_at_gamma_syn * gamma * gamma * chiR /
-                      (gamma_syn * gamma_syn);
+        chiR = math::sqrt(e_plus_beta_cross_b_Sqr - beta_dot_e * beta_dot_e) / m_B0;
+        peak_energy = m_photon_energy_at_gamma_syn_mc2 * gamma * gamma * chiR /
+                      (m_gamma_syn * m_gamma_syn);
       }
     };
 
@@ -156,8 +167,10 @@ namespace rgnr {
 
   template <dim_t D>
   auto SynchrotronSpectrum(const Particles<D>&,
-                           const Kokkos::View<real_t*>&,
-                           const std::map<std::string, real_t>&)
+                           const DimensionalArray<EnergyUnits>&,
+                           real_t,
+                           real_t,
+                           const DimensionalQuantity<EnergyUnits>&)
     -> Kokkos::View<real_t*>;
 
 } // namespace rgnr

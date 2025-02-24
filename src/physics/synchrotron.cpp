@@ -4,6 +4,7 @@
 #include "utils/tabulation.h"
 #include "utils/types.h"
 
+#include "containers/dimensionals.hpp"
 #include "containers/particles.hpp"
 
 #include <Kokkos_Core.hpp>
@@ -11,7 +12,6 @@
 
 #include <cmath>
 #include <iostream>
-#include <map>
 #include <vector>
 
 #define FIVE_THIRD 1.6666666666666667
@@ -55,16 +55,18 @@ namespace rgnr {
   } // namespace sync
 
   template <dim_t D>
-  auto SynchrotronSpectrum(const Particles<D>&          prtls,
-                           const Kokkos::View<real_t*>& photon_energy_bins,
-                           const std::map<std::string, real_t>& params)
+  auto SynchrotronSpectrum(const Particles<D>& prtls,
+                           const DimensionalArray<EnergyUnits>& photon_energy_bins,
+                           real_t B0,
+                           real_t gamma_syn,
+                           const DimensionalQuantity<EnergyUnits>& eps_at_gamma_syn)
     -> Kokkos::View<real_t*> {
     std::cout << "Computing synchrotron spectrum for " << prtls.label()
               << " ..." << std::endl;
     const auto synchrotron_f_func = sync::TabulateFfunc();
     std::cout << "  Synchrotron kernel function tabulated : OK" << std::endl;
 
-    const auto nphoton_bins = photon_energy_bins.extent(0);
+    const auto nphoton_bins = photon_energy_bins.data.extent(0);
     auto photon_spectrum = Kokkos::View<real_t*> { "photon_spectrum", nphoton_bins };
     auto photon_spectrum_scat = Kokkos::Experimental::create_scatter_view(
       photon_spectrum);
@@ -82,7 +84,9 @@ namespace rgnr {
                                          synchrotron_f_func,
                                          photon_energy_bins,
                                          photon_spectrum_scat,
-                                         params));
+                                         B0,
+                                         gamma_syn,
+                                         eps_at_gamma_syn));
     Kokkos::Experimental::contribute(photon_spectrum, photon_spectrum_scat);
 
     std::cout << "  Spectrum computed : OK" << std::endl;
@@ -90,15 +94,23 @@ namespace rgnr {
   }
 
   template auto SynchrotronSpectrum(const Particles<1>&,
-                                    const Kokkos::View<real_t*>&,
-                                    const std::map<std::string, real_t>&)
+                                    const DimensionalArray<EnergyUnits>&,
+                                    real_t,
+                                    real_t,
+                                    const DimensionalQuantity<EnergyUnits>&)
     -> Kokkos::View<real_t*>;
+
   template auto SynchrotronSpectrum(const Particles<2>&,
-                                    const Kokkos::View<real_t*>&,
-                                    const std::map<std::string, real_t>&)
+                                    const DimensionalArray<EnergyUnits>&,
+                                    real_t,
+                                    real_t,
+                                    const DimensionalQuantity<EnergyUnits>&)
     -> Kokkos::View<real_t*>;
+
   template auto SynchrotronSpectrum(const Particles<3>&,
-                                    const Kokkos::View<real_t*>&,
-                                    const std::map<std::string, real_t>&)
+                                    const DimensionalArray<EnergyUnits>&,
+                                    real_t,
+                                    real_t,
+                                    const DimensionalQuantity<EnergyUnits>&)
     -> Kokkos::View<real_t*>;
 } // namespace rgnr

@@ -1,0 +1,17 @@
+[data]
+  path = "/mnt/e/Downloads/"
+  step = 18
+
+[output]
+  file = "spec_%gamma_syn_pairs%_%gamma_syn_ions%_%gamma_syn_pairs_real%"
+
+[process]
+  pairs       = true
+  ions        = false
+  synchrotron = false
+  ic          = true
+
+[parameters]
+  gamma_syn_pairs      = 50.0
+  gamma_syn_ions       = 2000.0
+  gamma_syn_pairs_real = 1e7
