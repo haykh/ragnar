@@ -25,6 +25,11 @@ namespace rgnr {
                        real_t      xmax    = static_cast<real_t>(100))
       -> TabulatedFunction<true>;
 
+    /*
+     * Computes `E dN / d(ln E)` or `E dN / dE` for synchrotron radiation
+     * - if photon_energy_bins is logarithmically spaced --> `E^2 dN / dE`
+     * - if photon_energy_bins is linearly spaced --> `E dN / dE`
+     */
     template <dim_t D>
     class Kernel {
       const Kokkos::View<real_t* [3]> m_U, m_E, m_B;

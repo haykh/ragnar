@@ -37,37 +37,32 @@ namespace rgnr {
                                                 gamma_syn,
                                                 eps_at_gamma_syn);
 
-    auto sync_spectrum_h = Kokkos::create_mirror_view(sync_spectrum);
-    Kokkos::deep_copy(sync_spectrum_h, sync_spectrum);
-    io::h5::Write1DArray<real_t, decltype(sync_spectrum_h)>(
-      file,
-      "sync_intensity_" + label,
-      sync_spectrum_h,
-      sync_spectrum.extent(0));
+    io::h5::Write1DView<real_t>(file, "sync_intensity_" + label, sync_spectrum);
   }
 
   void computeICSpectrum(const Particles<3>&           prtls,
                          HighFive::File&               file,
+                         const Kokkos::View<real_t*>&  prtl_energy_bins,
                          const SoftPhotonDistribution& soft_photon_distribution,
                          const DimensionalArray<EnergyUnits>& soft_photon_energy_bins,
                          const DimensionalArray<EnergyUnits>& photon_energy_bins,
                          const std::string&                      label,
                          real_t                                  gamma_scale,
                          const DimensionalQuantity<EnergyUnits>& mc2) {
-    auto ic_spectrum = ICSpectrum<3, SoftPhotonDistribution>(
-      prtls,
-      soft_photon_distribution,
-      soft_photon_energy_bins,
-      photon_energy_bins,
-      gamma_scale,
-      mc2);
+    const auto prtl_energy_distribution = prtls.energyDistribution(prtl_energy_bins);
+    auto ic_spectrum = ICSpectrum<SoftPhotonDistribution>(prtl_energy_bins,
+                                                          prtl_energy_distribution,
+                                                          soft_photon_energy_bins,
+                                                          soft_photon_distribution,
+                                                          photon_energy_bins,
+                                                          gamma_scale,
+                                                          mc2);
 
-    auto ic_spectrum_h = Kokkos::create_mirror_view(ic_spectrum);
-    Kokkos::deep_copy(ic_spectrum_h, ic_spectrum);
-    io::h5::Write1DArray<real_t, decltype(ic_spectrum_h)>(file,
-                                                          "ic_intensity_" + label,
-                                                          ic_spectrum_h,
-                                                          ic_spectrum.extent(0));
+    io::h5::Write1DView<real_t>(file, "gammaM1_" + label, prtl_energy_bins);
+    io::h5::Write1DView<real_t>(file,
+                                "distribution_" + label,
+                                prtl_energy_distribution);
+    io::h5::Write1DView<real_t>(file, "ic_intensity_" + label, ic_spectrum);
   }
 
   void Simulation(int, char*[]) {
@@ -116,7 +111,7 @@ namespace rgnr {
     const auto photon_energy_at_gamma_syn = DimensionalQuantity<EnergyUnits>(
       Quantity::Energy,
       EnergyUnits::mc2,
-      27 / 8 * 0.1 * 137);
+      (27.0 / 8.0) * 0.1 * 137.0);
 
     const real_t sigma = 100.0;
     const real_t c_omp = 2.0;
@@ -132,6 +127,8 @@ namespace rgnr {
 
       const auto pairs = std::vector<std::string> { "e-", "e+" };
 
+      const auto pair_energy_bins = LogspaceView(1e-1, 200, 200);
+
       // define energy bins >
       const std::size_t sync_photon_nbins       = 200;
       const auto        sync_photon_energy_bins = DimensionalArray<EnergyUnits>(
@@ -143,36 +140,26 @@ namespace rgnr {
       const auto        ic_photon_energy_bins = DimensionalArray<EnergyUnits>(
         Quantity::Energy,
         EnergyUnits::mc2,
-        LogspaceView(0.1, 1e5, ic_photon_nbins));
+        LogspaceView(10, 1e7, ic_photon_nbins));
 
       const auto soft_photon_energy_bins = DimensionalArray<EnergyUnits>(
         Quantity::Energy,
         EnergyUnits::eV,
-        LogspaceView(1e-5, 1e2, 100));
+        LogspaceView(1e-5, 1e2, 200));
       const auto soft_photon_distribution = SoftPhotonDistribution {};
       // <
 
       // write energy bins to file
       if (process_synchrotron) {
-        auto sync_photon_energy_bins_h = Kokkos::create_mirror_view(
-          sync_photon_energy_bins.data);
-        Kokkos::deep_copy(sync_photon_energy_bins_h, sync_photon_energy_bins.data);
-        io::h5::Write1DArray<real_t, decltype(sync_photon_energy_bins_h)>(
-          file,
-          "sync_photon_energy_mec2",
-          sync_photon_energy_bins_h,
-          sync_photon_energy_bins.data.extent(0));
+        io::h5::Write1DView<real_t>(file,
+                                    "sync_photon_energy_mec2",
+                                    sync_photon_energy_bins.data);
       }
 
       if (process_ic) {
-        auto ic_photon_energy_bins_h = Kokkos::create_mirror_view(
-          ic_photon_energy_bins.data);
-        Kokkos::deep_copy(ic_photon_energy_bins_h, ic_photon_energy_bins.data);
-        io::h5::Write1DArray<real_t, decltype(ic_photon_energy_bins_h)>(
-          file,
-          "ic_photon_energy_mec2",
-          ic_photon_energy_bins_h,
-          ic_photon_energy_bins.data.extent(0));
+        io::h5::Write1DView<real_t>(file,
+                                    "ic_photon_energy_mec2",
+                                    ic_photon_energy_bins.data);
       }
       // <
 
@@ -195,6 +182,7 @@ namespace rgnr {
         if (process_ic) {
           computeICSpectrum(prtls,
                             file,
+                            pair_energy_bins,
                             soft_photon_distribution,
                             soft_photon_energy_bins,
                             ic_photon_energy_bins,
@@ -224,14 +212,9 @@ namespace rgnr {
                             gamma_syn_ions,
                             photon_energy_at_gamma_syn);
 
-        auto sync_photon_energy_bins_h = Kokkos::create_mirror_view(
-          sync_photon_energy_bins.data);
-        Kokkos::deep_copy(sync_photon_energy_bins_h, sync_photon_energy_bins.data);
-        io::h5::Write1DArray<real_t, decltype(sync_photon_energy_bins_h)>(
-          file,
-          "sync_photon_energy_mic2",
-          sync_photon_energy_bins_h,
-          sync_photon_energy_bins.data.extent(0));
+        io::h5::Write1DView<real_t>(file,
+                                    "sync_photon_energy_mic2",
+                                    sync_photon_energy_bins.data);
       }
     }
   }

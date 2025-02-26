@@ -33,6 +33,10 @@ namespace rgnr {
       return m_label;
     }
 
+    // computes dN / d(gamma - 1)
+    auto energyDistribution(const Kokkos::View<real_t*>&) const
+      -> Kokkos::View<real_t*>;
+
   private:
     bool        m_is_allocated { false };
     bool        m_coords_ignored { false };

@@ -89,6 +89,7 @@ namespace rgnr {
                                          eps_at_gamma_syn));
     Kokkos::Experimental::contribute(photon_spectrum, photon_spectrum_scat);
 
+    Kokkos::fence();
     std::cout << "  Spectrum computed : OK" << std::endl;
     return photon_spectrum;
   }

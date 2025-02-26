@@ -38,6 +38,19 @@ namespace rgnr::io::h5 {
     dataset.write_raw(array.data());
   }
 
+  template <typename T>
+  inline void Write1DView(HighFive::File          file,
+                          const std::string&      name,
+                          const Kokkos::View<T*>& array) {
+    std::cout << "Writing " << name << " to " << file.getName() << " ..."
+              << std::endl;
+    const auto array_h = Kokkos::create_mirror_view(array);
+    Kokkos::deep_copy(array_h, array);
+    auto dataset = file.createDataSet<T>(name,
+                                         HighFive::DataSpace({ array.extent(0) }));
+    dataset.write_raw(array_h.data());
+  }
+
 } // namespace rgnr::io::h5
 
 #endif // IO_H5_HPP

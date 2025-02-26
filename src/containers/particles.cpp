@@ -3,11 +3,14 @@
 #include "utils/types.h"
 
 #include <Kokkos_Core.hpp>
+#include <Kokkos_ScatterView.hpp>
 
 #include <array>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+
+namespace math = Kokkos;
 
 namespace rgnr {
 
@@ -49,6 +52,64 @@ namespace rgnr {
       "B", nalloc
     };
     m_is_allocated = true;
+  }
+
+  template <dim_t D>
+  auto Particles<D>::energyDistribution(
+    const Kokkos::View<real_t*>& gammaM1_bins) const -> Kokkos::View<real_t*> {
+    std::cout << "Computing energy distribution for " << label() << " ..."
+              << std::endl;
+    auto energy_distribution = Kokkos::View<real_t*> { "energy_distribution",
+                                                       gammaM1_bins.extent(0) };
+
+    Kokkos::MinMaxScalar<real_t> gminmax;
+    Kokkos::parallel_reduce(
+      "GammaBinsMinMax",
+      gammaM1_bins.extent(0),
+      KOKKOS_LAMBDA(std::size_t p, Kokkos::MinMaxScalar<real_t> & lgminmax) {
+        if (gammaM1_bins(p) < lgminmax.min_val) {
+          lgminmax.min_val = gammaM1_bins(p);
+        }
+        if (gammaM1_bins(p) > lgminmax.max_val) {
+          lgminmax.max_val = gammaM1_bins(p);
+        }
+      },
+      Kokkos::MinMax<real_t> { gminmax });
+
+    const auto gammaM1_min = gminmax.min_val, gammaM1_max = gminmax.max_val;
+    const auto n = gammaM1_bins.extent(0);
+
+    std::cout << "MINMAX: " << gammaM1_min << " " << gammaM1_max << std::endl;
+
+    auto energy_distribution_scat = Kokkos::Experimental::create_scatter_view(
+      energy_distribution);
+    const auto& Uarr = this->U;
+
+    Kokkos::parallel_for(
+      "ComputeEnergyDistribution",
+      range(),
+      KOKKOS_LAMBDA(std::size_t pidx) {
+        const auto gammaM1 = math::sqrt(1.0 +
+                                        Uarr(pidx, in::x) * Uarr(pidx, in::x) +
+                                        Uarr(pidx, in::y) * Uarr(pidx, in::y) +
+                                        Uarr(pidx, in::z) * Uarr(pidx, in::z)) -
+                             1;
+        auto gi = static_cast<std::size_t>(
+          static_cast<real_t>(n - 1) *
+          math::abs(math::log10(gammaM1 / gammaM1_min)) /
+          math::log10(gammaM1_max / gammaM1_min));
+
+        std::size_t idx = gi > n - 1 ? n - 1 : gi;
+
+        auto energy_distribution_acc  = energy_distribution_scat.access();
+        energy_distribution_acc(idx) += 1.0 / gammaM1;
+      });
+
+    Kokkos::Experimental::contribute(energy_distribution, energy_distribution_scat);
+    Kokkos::fence();
+
+    std::cout << "  Distribution computed : OK" << std::endl;
+    return energy_distribution;
   }
 
   template <dim_t D>
