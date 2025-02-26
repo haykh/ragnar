@@ -7,8 +7,8 @@
 
 [process]
   pairs       = true
-  ions        = false
-  synchrotron = false
+  ions        = true
+  synchrotron = true
   ic          = true
 
 [parameters]
