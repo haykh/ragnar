@@ -3,6 +3,8 @@ project(Ragnar LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/extern/pybind11)
+
 include(FetchContent)
 FetchContent_Declare(
   Kokkos
