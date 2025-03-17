@@ -1,7 +1,7 @@
-set(EXECUTABLE main.xc)
+set(LIBRARY ragnar)
 set(SUBDIRS utils containers plugins physics)
-set(DEPS rgnr_plugins rgnr_containers rgnr_physics)
-link_libraries(Kokkos::kokkos HighFive toml11::toml11)
+set(DEPS rgnr_containers rgnr_plugins rgnr_physics)
+link_libraries(Kokkos::kokkos HighFive toml11::toml11 pybind11::pybind11)
 
 foreach(subdir ${SUBDIRS})
   add_subdirectory(${subdir})
@@ -9,7 +9,7 @@ endforeach()
 
 file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
-add_executable(${EXECUTABLE} ${SOURCES})
+pybind11_add_module(${LIBRARY} ${SOURCES})
 
-add_dependencies(${EXECUTABLE} ${DEPS})
-target_link_libraries(${EXECUTABLE} PUBLIC ${DEPS})
+add_dependencies(${LIBRARY} ${DEPS})
+target_link_libraries(${LIBRARY} PUBLIC ${DEPS})

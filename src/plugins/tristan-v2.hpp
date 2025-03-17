@@ -4,15 +4,18 @@
 #include "utils/types.h"
 
 #include "containers/particles.hpp"
-#include "plugins/plugin.hpp"
+
+#include <pybind11/pybind11.h>
 
 #include <stdexcept>
 #include <string>
 
+namespace py = pybind11;
+
 namespace rgnr {
 
   template <dim_t D>
-  class TristanV2 : public Plugin<D> {
+  class TristanV2 {
     std::string m_path;
     std::size_t m_step;
 
@@ -20,14 +23,16 @@ namespace rgnr {
     bool is_step_set { false };
 
   public:
-    TristanV2() : Plugin<D>() {}
+    TristanV2() {}
 
-    void readParticles(unsigned short,
-                       Particles<D>*,
+    auto readParticles(const std::string&,
+                       unsigned short,
+                       std::size_t = 0,
+                       std::size_t = 0,
                        std::size_t = 1,
-                       bool        = not IGNORE_COORDS) const override;
+                       bool        = not IGNORE_COORDS) const -> Particles<D>;
 
-    auto label() const -> std::string override;
+    auto label() const -> std::string;
 
     // setters
     void setPath(const std::string&);
@@ -37,6 +42,9 @@ namespace rgnr {
     auto getPath() const -> std::string;
     auto getStep() const -> std::size_t;
   };
+
+  template <dim_t D>
+  void pyDefineTristanV2Plugin(py::module&);
 
 } // namespace rgnr
 

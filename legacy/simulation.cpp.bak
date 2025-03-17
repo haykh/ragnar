@@ -1,5 +1,4 @@
 #include "simulation.h"
-
 #include "utils/snippets.h"
 #include "utils/types.h"
 

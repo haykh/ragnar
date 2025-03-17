@@ -1,13 +1,18 @@
 #ifndef UTILS_TABULATION_H
 #define UTILS_TABULATION_H
 
+#include "utils/array.h"
 #include "utils/types.h"
 
 #include <Kokkos_Core.hpp>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
+#include <string>
 #include <vector>
 
 namespace math = Kokkos;
+namespace py   = pybind11;
 
 namespace rgnr {
 
@@ -49,7 +54,8 @@ namespace rgnr {
 
   template <bool LG>
   class TabulatedFunction {
-    Kokkos::View<real_t*> m_x, m_y;
+    // Kokkos::View<real_t*> m_x, m_y;
+    Array<real_t*> m_x, m_y;
 
     const real_t      m_yfill;
     const std::size_t m_n;
@@ -58,9 +64,13 @@ namespace rgnr {
     void verify() const;
 
   public:
-    TabulatedFunction(Kokkos::View<real_t*> x,
-                      Kokkos::View<real_t*> y,
+    TabulatedFunction(const Array<real_t*>& x,
+                      const Array<real_t*>& y,
                       real_t                yfill = 0.0);
+
+    TabulatedFunction(const Kokkos::View<real_t*>& x,
+                      const Kokkos::View<real_t*>& y,
+                      real_t                       yfill = 0.0);
 
     TabulatedFunction(const std::vector<real_t>& x,
                       const std::vector<real_t>& y,
@@ -68,11 +78,20 @@ namespace rgnr {
 
     void findMinMax();
 
-    auto xArr() const -> const Kokkos::View<real_t*>& {
+    // getters
+    auto xView() const -> const Kokkos::View<real_t*>& {
+      return m_x.data;
+    }
+
+    auto yView() const -> const Kokkos::View<real_t*>& {
+      return m_y.data;
+    }
+
+    auto xArr() const -> const Array<real_t*>& {
       return m_x;
     }
 
-    auto yArr() const -> const Kokkos::View<real_t*>& {
+    auto yArr() const -> const Array<real_t*>& {
       return m_y;
     }
 
@@ -92,6 +111,9 @@ namespace rgnr {
       return m_xmax;
     }
   };
+
+  template <bool LG>
+  void pyDefineTabulatedFunction(py::module&);
 
 } // namespace rgnr
 

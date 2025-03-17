@@ -3,19 +3,21 @@
 
 #include "utils/types.h"
 
-#include "containers/dimensionals.hpp"
 #include "containers/particles.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
+#include <pybind11/pybind11.h>
 
 #include <iostream>
 #include <map>
 #include <string>
 
 namespace math = Kokkos;
+namespace py   = pybind11;
 
 namespace rgnr {
+
   namespace ic {
 
     KOKKOS_INLINE_FUNCTION
@@ -25,24 +27,25 @@ namespace rgnr {
     }
 
     /*
-     * Computes `E dN / d(ln E)` or `E dN / dE` for IC radiation
-     * - if photon_energy_bins is logarithmically spaced --> `E^2 dN / dE`
-     * - if photon_energy_bins is linearly spaced --> `E dN / dE`
+     * Computes `E dN / d(ln E)` or `E dN / dE`
+     * ... for IC radiation from a given distribution
+     * - if eic_bins is logarithmically spaced --> `E^2 dN / dE`
+     * - if eic_bins is linearly spaced --> `E dN / dE`
      */
     template <class S>
     class Kernel {
-      const Kokkos::View<real_t*> m_prtl_energy_bins;
-      const Kokkos::View<real_t*> m_prtl_energy_distribution;
+      const Kokkos::View<real_t*> m_gamma_bins;
+      const Kokkos::View<real_t*> m_dn_dgamma;
 
-      const S m_soft_photon_distribution;
+      const S m_dn_desoft;
 
-      const Kokkos::View<real_t*> m_soft_photon_energy_bins;
+      const Kokkos::View<real_t*> m_esot_bins;
 
-      const Kokkos::View<real_t*> m_photon_energy_bins;
+      const Kokkos::View<real_t*> m_eic_bins;
 
-      Kokkos::Experimental::ScatterView<real_t*> m_photon_spectrum;
+      Kokkos::Experimental::ScatterView<real_t*> m_eic2_dn_deic_scat;
 
-      const real_t m_gamma_scale, m_mc2;
+      const real_t m_mc2;
 
     public:
       Kernel(const Kokkos::View<real_t*>&         prtl_energy_bins,
@@ -122,8 +125,8 @@ namespace rgnr {
               << ToHumanReadable(nprtl_bins * nphoton_bins * nsoft_bins, USE_POW10)
               << " threads" << std::endl;
     const auto range_policy = Kokkos::MDRangePolicy<Kokkos::Rank<3>> {
-      {         0,            0,          0},
-      {nprtl_bins, nphoton_bins, nsoft_bins}
+      {          0,            0,          0 },
+      { nprtl_bins, nphoton_bins, nsoft_bins }
     };
     Kokkos::parallel_for("ICSpectrum",
                          range_policy,

@@ -7,4 +7,5 @@ compile_commands.json
 references/
 tags
 .venv/
-temp/
+temp*
+__cmake_*

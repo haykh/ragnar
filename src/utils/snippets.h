@@ -1,9 +1,12 @@
 #ifndef UTILS_SNIPPETS_H
 #define UTILS_SNIPPETS_H
 
+#include "utils/array.h"
 #include "utils/types.h"
 
 #include <Kokkos_Core.hpp>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include <cmath>
 #include <limits>
@@ -11,15 +14,17 @@
 #include <type_traits>
 #include <vector>
 
+namespace py = pybind11;
+
 namespace rgnr {
 
   auto Linspace(real_t start, real_t stop, std::size_t num) -> std::vector<real_t>;
   auto Logspace(real_t start, real_t stop, std::size_t num) -> std::vector<real_t>;
 
-  auto LinspaceView(real_t start, real_t stop, std::size_t num)
-    -> Kokkos::View<real_t*>;
-  auto LogspaceView(real_t start, real_t stop, std::size_t num)
-    -> Kokkos::View<real_t*>;
+  auto LinspaceView(real_t start, real_t stop, std::size_t num) -> Array<real_t*>;
+  auto LogspaceView(real_t start, real_t stop, std::size_t num) -> Array<real_t*>;
+
+  void pyDefineLinLogSpaces(py::module&);
 
   template <class T>
   inline auto AlmostEqual(T a, T b, T eps = std::numeric_limits<T>::epsilon())

@@ -1,6 +1,7 @@
 #ifndef CONTAINERS_PARTICLES_HPP
 #define CONTAINERS_PARTICLES_HPP
 
+#include "utils/array.h"
 #include "utils/types.h"
 
 #include <Kokkos_Core.hpp>
@@ -16,14 +17,17 @@ namespace rgnr {
 
     Particles(const std::string& label) : m_label { label } {}
 
-    void setNactive(std::size_t);
-    void setIgnoreCoords(bool);
+    auto range() const -> Kokkos::RangePolicy<>;
     void allocate(std::size_t);
 
-    void printHead(std::size_t = 0, std::size_t = 5) const;
+    // setters
+    void setNactive(std::size_t);
+    void setIgnoreCoords(bool);
 
-    auto is_allocated() const -> bool;
-    auto range() const -> Kokkos::RangePolicy<>;
+    // getters
+    auto is_allocated() const -> bool {
+      return m_is_allocated;
+    }
 
     auto nactive() const -> std::size_t {
       return m_nactive;
@@ -33,9 +37,18 @@ namespace rgnr {
       return m_label;
     }
 
-    // computes dN / d(gamma - 1)
-    auto energyDistribution(const Kokkos::View<real_t*>&) const
-      -> Kokkos::View<real_t*>;
+    void printHead(std::size_t = 0, std::size_t = 5) const;
+    auto repr() const -> std::string;
+
+    // computes dN / de, where E is gamma or gamma * beta
+    auto energyDistribution(const Array<real_t*>&, bool = true) const
+      -> Array<real_t*>;
+
+    // accessors
+    auto Xarr(std::size_t) const -> Array<real_t*>;
+    auto Uarr(std::size_t) const -> Array<real_t*>;
+    auto Earr(std::size_t) const -> Array<real_t*>;
+    auto Barr(std::size_t) const -> Array<real_t*>;
 
   private:
     bool        m_is_allocated { false };
@@ -44,6 +57,9 @@ namespace rgnr {
 
     const std::string m_label;
   };
+
+  template <dim_t D>
+  void pyDefineParticles(py::module&);
 
 } // namespace rgnr
 
