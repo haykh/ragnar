@@ -56,6 +56,7 @@ namespace rgnr {
   auto read1DArray(HighFive::File     file,
                    const std::string& dsetname,
                    A                  arr_h,
+                   std::size_t        start,
                    std::size_t        size,
                    std::size_t        stride) -> std::size_t {
     auto dataset = file.getDataSet(dsetname);
@@ -63,21 +64,24 @@ namespace rgnr {
     if (dims.size() != 1) {
       throw std::runtime_error("Dataset is not 1D");
     }
-    if (stride == 0) {
-      throw std::runtime_error("Stride must be greater than 0");
-    } else if (size == 0) {
-      size = dims[0];
-    } else if (dims[0] / stride > size) {
-      throw std::runtime_error(
-        "Number of read quantity exceeds allocated space");
+    if (start >= dims[0]) {
+      throw std::runtime_error("Start index out of bounds");
     }
-    dataset.select({ 0 }, { size }, { stride }).template read<T>(arr_h.data());
+    if (start + size > dims[0]) {
+      throw std::runtime_error("Size exceeds dataset dimensions");
+    }
+    if (size == 0) {
+      size = dims[0] / stride;
+    }
+    dataset.select({ start }, { size }, { stride }).template read<T>(arr_h.data());
     return size;
   }
 
   template <unsigned short N>
   auto readPrtlQuantity(HighFive::File            file,
                         const std::string&        quantity,
+                        std::size_t               start,
+                        std::size_t               size,
                         std::size_t               stride,
                         std::size_t               idx,
                         Kokkos::View<real_t* [N]> arr) -> std::size_t {
@@ -85,7 +89,8 @@ namespace rgnr {
     const auto nread = read1DArray<real_t, decltype(arr_h)>(file,
                                                             quantity,
                                                             arr_h,
-                                                            arr.extent(0),
+                                                            start,
+                                                            size,
                                                             stride);
     Kokkos::deep_copy(Kokkos::subview(arr, Kokkos::ALL, idx), arr_h);
     return nread;
@@ -100,6 +105,9 @@ namespace rgnr {
                                    bool ignore_coordinates) const -> Particles<D> {
     if (stride == 0) {
       throw std::runtime_error("Stride must be greater than 0");
+    } else if (stride != 1 and size != 0) {
+      throw std::runtime_error(
+        "Size must be determined automatically (0) when stride != 1");
     }
     auto prtls = Particles<D> { label };
 
@@ -122,9 +130,7 @@ namespace rgnr {
     if (start + size >= ntotal) {
       throw std::runtime_error("start + size >= total number of particles");
     }
-    const std::size_t nparticles =
-      (size == 0) ? file.getDataSet("x_" + sp_str).getDimensions()[0] / stride
-                  : size;
+    const std::size_t nparticles = (size == 0) ? (ntotal / stride) : size;
     prtls.allocate(nparticles);
 
     py::print(" found",
@@ -147,7 +153,9 @@ namespace rgnr {
       for (auto d = 0u; d < D; ++d) {
         auto nread_coord = readPrtlQuantity<D>(file,
                                                comps_coord[d] + "_" + sp_str,
-                                               read_every,
+                                               start,
+                                               size,
+                                               stride,
                                                comps_idx[d],
                                                prtls.X);
         report_ok(nparticles, nread_coord, comps_coord[d]);
@@ -156,19 +164,25 @@ namespace rgnr {
     for (auto d = 0u; d < 3u; ++d) {
       auto nread_vel = readPrtlQuantity<3>(file,
                                            comps_vel[d] + "_" + sp_str,
-                                           read_every,
+                                           start,
+                                           size,
+                                           stride,
                                            comps_idx[d],
                                            prtls.U);
       report_ok(nparticles, nread_vel, comps_vel[d]);
       auto nread_e = readPrtlQuantity<3>(file,
                                          "e" + comps_coord[d] + "_" + sp_str,
-                                         read_every,
+                                         start,
+                                         size,
+                                         stride,
                                          comps_idx[d],
                                          prtls.E);
       report_ok(nparticles, nread_e, "e" + comps_coord[d]);
       auto nread_b = readPrtlQuantity<3>(file,
                                          "b" + comps_coord[d] + "_" + sp_str,
-                                         read_every,
+                                         start,
+                                         size,
+                                         stride,
                                          comps_idx[d],
                                          prtls.B);
       report_ok(nparticles, nread_b, "b" + comps_coord[d]);
@@ -190,7 +204,9 @@ namespace rgnr {
            &TristanV2<D>::readParticles,
            "label"_a,
            "sp"_a,
-           "read_every"_a         = 1,
+           "start"_a              = 0,
+           "size"_a               = 0,
+           "stride"_a             = 1,
            "ignore_coordinates"_a = false,
            R"rgnrdoc(
               Read particles from Tristan V2 output
@@ -203,8 +219,14 @@ namespace rgnr {
               sp : int
                 Species number
 
-              read_every : int, optional
-                Read every nth particle [default: 1]
+              start : int, optional
+                Start index [default: 0]
+
+              size : int, optional
+                Number of particles to read. 0 to read all [default: 0]
+
+              stride : int, optional
+                Read every nth particle (when stride > 1, size must be 0) [default: 1]
 
               ignore_coordinates : bool, optional
                 Ignore particle coordinates [default: False]
@@ -215,26 +237,27 @@ namespace rgnr {
                 Particle container
           )rgnrdoc")
       .doc() = R"rgnrdoc(
-              Read particles from Tristan V2 output
+              Plugin for the Tristan v2 simulation data
 
-              Parameters
-              ----------
-              label : str
-                Label for the particles
-
-              sp : int
-                Species number
-
-              read_every : int, optional
-                Read every nth particle [default: 1]
-
-              ignore_coordinates : bool, optional
-                Ignore particle coordinates [default: False]
-
-              Returns
+              Methods
               -------
-              Particles_1D, Particles_2D, Particles_3D
-                Particle container
+              label()
+                Get the label of the plugin
+
+              setPath(path)
+                Set the path to the output directory
+
+              setStep(step)
+                Set the step number
+
+              getPath()
+                Get the path to the output directory
+          
+              getStep()
+                Get the step number
+
+              readParticles(label, sp, start, size, stride, ignore_coordinates)
+                Read particles from Tristan V2 output
           )rgnrdoc";
   }
 

@@ -44,8 +44,9 @@ namespace rgnr {
       }
     }
 
-    auto TabulateFfunc(std::size_t npoints, real_t xmin, real_t xmax)
-      -> TabulatedFunction<true> {
+    auto TabulateFfunc(std::size_t npoints,
+                       real_t      xmin,
+                       real_t      xmax) -> TabulatedFunction<true> {
       const auto          xs = Logspace(xmin, xmax, npoints);
       std::vector<real_t> ys(npoints);
       for (std::size_t i = 0u; i < npoints; ++i) {
@@ -113,11 +114,7 @@ namespace rgnr {
                            real_t esyn_at_gamma_syn) -> Array<real_t*> {
     py::print("Computing synchrotron spectrum for", prtls.label(), "flush"_a = true);
     const auto synchrotron_f_func = sync::TabulateFfunc();
-
-    const auto n_esyn_bins = esyn_bins.extent(0);
-    auto esyn2_dn_desyn = Kokkos::View<real_t*> { "esyn2_dn_desyn", n_esyn_bins };
-    auto esyn2_dn_desyn_scat = Kokkos::Experimental::create_scatter_view(
-      esyn2_dn_desyn);
+    const auto n_esyn_bins        = esyn_bins.extent(0);
 
     py::print(" Launching",
               ToHumanReadable(prtls.nactive() * n_esyn_bins, USE_POW10),
@@ -129,6 +126,9 @@ namespace rgnr {
       {               0,           0 },
       { prtls.nactive(), n_esyn_bins }
     };
+    auto esyn2_dn_desyn = Kokkos::View<real_t*> { "esyn2_dn_desyn", n_esyn_bins };
+    auto esyn2_dn_desyn_scat = Kokkos::Experimental::create_scatter_view(
+      esyn2_dn_desyn);
     Kokkos::parallel_for("SynchrotronSpectrum",
                          range_policy,
                          sync::Kernel<D>(prtls,

@@ -5,6 +5,8 @@
 
 #include "containers/particles.hpp"
 #include "io/h5.hpp"
+#include "physics/distributions.hpp"
+#include "physics/ic.hpp"
 #include "physics/synchrotron.hpp"
 #include "plugins/tristan-v2.hpp"
 
@@ -14,6 +16,7 @@
 PYBIND11_MAKE_OPAQUE(Kokkos::View<int*>);
 PYBIND11_MAKE_OPAQUE(Kokkos::View<float*>);
 PYBIND11_MAKE_OPAQUE(Kokkos::View<double*>);
+PYBIND11_MAKE_OPAQUE(rgnr::BrokenPlawDistribution);
 
 namespace py = pybind11;
 
@@ -73,8 +76,10 @@ PYBIND11_MODULE(ragnar, m) {
   rgnr::pyDefineTristanV2Plugin<3>(m);
 
   // physics
+  rgnr::pyDefineBrokenPlawDistribution(m);
   rgnr::pyDefineSynchrotronSpectrum<1>(m);
   rgnr::pyDefineSynchrotronSpectrum<2>(m);
   rgnr::pyDefineSynchrotronSpectrum<3>(m);
   rgnr::pyDefineSynchrotronSpectrumFromDist(m);
+  rgnr::pyDefineICSpectrumFromDist(m);
 }

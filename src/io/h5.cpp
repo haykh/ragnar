@@ -47,9 +47,9 @@ namespace rgnr::io::h5 {
   }
 
   template <typename T>
-  void Write1DArray<T>(const std::string& filename,
-                       const std::string& dsetname,
-                       const Array<T*>&   array) {
+  void Write1DArray(const std::string& filename,
+                    const std::string& dsetname,
+                    const Array<T*>&   array) {
     HighFive::File file(filename,
                         HighFive::File::ReadWrite | HighFive::File::Create);
     py::print("Writing", dsetname, "to", filename, "...", "end"_a = "", "flush"_a = true);
