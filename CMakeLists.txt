@@ -7,9 +7,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
-set(RAGNAR_USE_HDF5 CACHE BOOL ON)
+set(RAGNAR_USE_HDF5 BOOL ON)
 if(RAGNAR_USE_HDF5)
+  message(STATUS "Using HDF5")
   add_compile_definitions(USE_HDF5)
+else()
+  message(STATUS "Not using HDF5")
 endif()
 
 # dependencies
