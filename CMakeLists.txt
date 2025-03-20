@@ -7,7 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
-set(RAGNAR_USE_HDF5 BOOL ON)
+set(RAGNAR_USE_HDF5 CACHE BOOL ON)
 if(RAGNAR_USE_HDF5)
   message(STATUS "Using HDF5")
   add_compile_definitions(USE_HDF5)
@@ -34,11 +34,12 @@ if(RAGNAR_USE_HDF5)
   link_libraries(HighFive)
 endif()
 
+set(SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/pyinterface.cpp)
 foreach(subdir ${SUBDIRS})
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/${subdir})
+  file(GLOB_RECURSE LOC_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/${subdir}/*.cpp)
+  list(APPEND SOURCES ${LOC_SOURCES})
 endforeach()
-
-file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
 pybind11_add_module(${LIBRARY} ${SOURCES})
 
