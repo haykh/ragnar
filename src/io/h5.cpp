@@ -3,6 +3,7 @@
 #include "containers/array.hpp"
 
 #include <Kokkos_Core.hpp>
+#include <highfive/highfive.hpp>
 #include <pybind11/pybind11.h>
 
 #include <string>

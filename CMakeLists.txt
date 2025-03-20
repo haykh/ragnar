@@ -7,14 +7,29 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
+set(RAGNAR_USE_HDF5 CACHE BOOL ON)
+if(RAGNAR_USE_HDF5)
+  add_compile_definitions(USE_HDF5)
+endif()
+
 # dependencies
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies.cmake)
 
 # main code
 set(LIBRARY ragnar)
-set(SUBDIRS utils containers plugins physics)
-set(DEPS rgnr_containers rgnr_plugins rgnr_physics)
-link_libraries(Kokkos::kokkos HighFive pybind11::pybind11)
+set(SUBDIRS utils containers physics)
+set(DEPS rgnr_utils rgnr_containers rgnr_physics)
+
+if(RAGNAR_USE_HDF5)
+  list(APPEND SUBDIRS io plugins)
+  list(APPEND DEPS rgnr_io rgnr_plugins)
+endif()
+
+link_libraries(Kokkos::kokkos pybind11::pybind11)
+
+if(RAGNAR_USE_HDF5)
+  link_libraries(HighFive)
+endif()
 
 foreach(subdir ${SUBDIRS})
   add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/${subdir})

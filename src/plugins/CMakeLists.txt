@@ -1,5 +1,5 @@
 set(LIB rgnr_plugins)
-set(DEPS rgnr_utils rgnr_containers)
+set(DEPS rgnr_utils rgnr_containers rgnr_io)
 
 file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 

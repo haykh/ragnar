@@ -6,10 +6,13 @@
 #include "containers/distributions.hpp"
 #include "containers/particles.hpp"
 #include "containers/tabulation.hpp"
-#include "io/h5.hpp"
 #include "physics/ic.hpp"
 #include "physics/synchrotron.hpp"
-#include "plugins/tristan-v2.hpp"
+
+#if defined(USE_HDF5)
+  #include "io/h5.hpp"
+  #include "plugins/tristan-v2.hpp"
+#endif
 
 #include <Kokkos_Core.hpp>
 #include <pybind11/pybind11.h>
@@ -62,6 +65,7 @@ PYBIND11_MODULE(ragnar, m) {
   rgnr::pyDefineParticles<2>(m);
   rgnr::pyDefineParticles<3>(m);
 
+#if defined(USE_HDF5)
   // io
   rgnr::io::h5::pyDefineRead1DArray<int>(m);
   rgnr::io::h5::pyDefineRead1DArray<float>(m);
@@ -75,6 +79,7 @@ PYBIND11_MODULE(ragnar, m) {
   rgnr::pyDefineTristanV2Plugin<1>(m);
   rgnr::pyDefineTristanV2Plugin<2>(m);
   rgnr::pyDefineTristanV2Plugin<3>(m);
+#endif
 
   // physics
   rgnr::pyDefineGenerators(m);

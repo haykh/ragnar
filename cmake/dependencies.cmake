@@ -4,19 +4,22 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/extern/pybind11)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/styling.cmake)
 
 include(FetchContent)
-find_package(HighFive QUIET)
-if(NOT HighFive_FOUND)
-  set(HIGHFIVE_USE_BOOST OFF)
-  find_package(hdf5 REQUIRED)
-  message(
-    STATUS "${Yellow}HighFive not found, fetching from source${ColorReset}")
-  FetchContent_Declare(
-    HighFive
-    GIT_REPOSITORY https://github.com/highfive-devs/highfive.git
-    GIT_TAG v2.10.1)
-  FetchContent_MakeAvailable(HighFive)
-else()
-  message(STATUS "${Green}HighFive found${ColorReset}")
+
+if(RAGNAR_USE_HDF5)
+  find_package(HighFive QUIET)
+  if(NOT HighFive_FOUND)
+    set(HIGHFIVE_USE_BOOST OFF)
+    find_package(hdf5 REQUIRED)
+    message(
+      STATUS "${Yellow}HighFive not found, fetching from source${ColorReset}")
+    FetchContent_Declare(
+      HighFive
+      GIT_REPOSITORY https://github.com/highfive-devs/highfive.git
+      GIT_TAG v2.10.1)
+    FetchContent_MakeAvailable(HighFive)
+  else()
+    message(STATUS "${Green}HighFive found${ColorReset}")
+  endif()
 endif()
 
 find_package(Kokkos QUIET)
