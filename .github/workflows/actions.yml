@@ -19,7 +19,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest numpy
       - name: Configure
-        run: cmake -B build
+        run: cmake -B build -D RAGNAR_USE_HDF5=OFF
       - name: Compile
         run: cmake --build build -j $(nproc)
       - name: Run tests
