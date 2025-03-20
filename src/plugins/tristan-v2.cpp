@@ -2,15 +2,11 @@
 
 #include "utils/snippets.h"
 
-#include "io/h5.hpp"
-
 #include <Kokkos_Core.hpp>
 #include <highfive/highfive.hpp>
 #include <pybind11/pybind11.h>
 
 #include <array>
-#include <iomanip>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 

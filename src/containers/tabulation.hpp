@@ -1,14 +1,14 @@
-#ifndef UTILS_TABULATION_H
-#define UTILS_TABULATION_H
+#ifndef CONTAINERS_TABULATION_HPP
+#define CONTAINERS_TABULATION_HPP
 
-#include "utils/array.h"
-#include "utils/types.h"
+#include "utils/global.h"
+
+#include "containers/array.hpp"
 
 #include <Kokkos_Core.hpp>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 
-#include <string>
 #include <vector>
 
 namespace math = Kokkos;
@@ -54,8 +54,7 @@ namespace rgnr {
 
   template <bool LG>
   class TabulatedFunction {
-    // Kokkos::View<real_t*> m_x, m_y;
-    Array<real_t*> m_x, m_y;
+    Array1D<real_t> m_x, m_y;
 
     const real_t      m_yfill;
     const std::size_t m_n;
@@ -64,13 +63,17 @@ namespace rgnr {
     void verify() const;
 
   public:
-    TabulatedFunction(const Array<real_t*>& x,
-                      const Array<real_t*>& y,
-                      real_t                yfill = 0.0);
+    TabulatedFunction(const Array1D<real_t>& x,
+                      const Array1D<real_t>& y,
+                      real_t                 yfill = 0.0);
 
     TabulatedFunction(const Kokkos::View<real_t*>& x,
                       const Kokkos::View<real_t*>& y,
                       real_t                       yfill = 0.0);
+
+    TabulatedFunction(const py::array_t<real_t>& x,
+                      const py::array_t<real_t>& y,
+                      real_t                     yfill = 0.0);
 
     TabulatedFunction(const std::vector<real_t>& x,
                       const std::vector<real_t>& y,
@@ -87,11 +90,11 @@ namespace rgnr {
       return m_y.data;
     }
 
-    auto xArr() const -> const Array<real_t*>& {
+    auto xArr() const -> const Array1D<real_t>& {
       return m_x;
     }
 
-    auto yArr() const -> const Array<real_t*>& {
+    auto yArr() const -> const Array1D<real_t>& {
       return m_y;
     }
 
@@ -117,4 +120,4 @@ namespace rgnr {
 
 } // namespace rgnr
 
-#endif // UTILS_TABULATION_H
+#endif // CONTAINERS_TABULATION_HPP

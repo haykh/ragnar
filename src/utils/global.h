@@ -1,5 +1,5 @@
-#ifndef TYPES_H
-#define TYPES_H
+#ifndef UTILS_GLOBAL_H
+#define UTILS_GLOBAL_H
 
 #include <pybind11/pybind11.h>
 
@@ -37,4 +37,4 @@ namespace rgnr {
 
 } // namespace rgnr
 
-#endif // TYPES_H
+#endif // UTILS_GLOBAL_H

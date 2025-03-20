@@ -9,3 +9,6 @@ tags
 .venv/
 temp*
 __cmake_*
+.pytest_cache/
+__pycache__/
+*.png

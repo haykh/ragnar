@@ -1,23 +1,24 @@
 #include "physics/synchrotron.hpp"
 
-#include "utils/array.h"
+#include "utils/global.h"
 #include "utils/snippets.h"
-#include "utils/tabulation.h"
-#include "utils/types.h"
 
+#include "containers/array.hpp"
+#include "containers/distributions.hpp"
 #include "containers/particles.hpp"
+#include "containers/tabulation.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
 #include <pybind11/pybind11.h>
 
 #include <cmath>
-#include <iostream>
 #include <vector>
 
 namespace py = pybind11;
 using namespace pybind11::literals;
 
+#define ONE_THIRD  0.3333333333333333
 #define FIVE_THIRD 1.6666666666666667
 
 namespace rgnr {
@@ -26,18 +27,18 @@ namespace rgnr {
 
     auto Ffunc_integrand(real_t x) -> real_t {
       if (x < 1e-5) {
-        return 4.0 * M_PI / (std::sqrt(3.0) * std::tgamma(1.0 / 3.0)) *
+        return 4.0 * M_PI / (std::sqrt(3.0) * std::tgamma(ONE_THIRD)) *
                std::pow(0.5 * x, 1.0 / 3.0);
       } else if (x > 20) {
         return 0.0;
       } else {
-        const auto          xs = Logspace(x, 20, 100);
+        const auto          xs = Logspace(x, 20, 100).as_vector();
         std::vector<real_t> ys(100);
-        for (std::size_t i = 0; i < 100; ++i) {
+        for (auto i = 0u; i < 100u; ++i) {
           ys[i] = std::cyl_bessel_k(FIVE_THIRD, xs[i]);
         }
         real_t integrand = 0.0;
-        for (std::size_t i = 0; i < 99; ++i) {
+        for (auto i = 0u; i < 99u; ++i) {
           integrand += 0.5 * (ys[i] + ys[i + 1]) * (xs[i + 1] - xs[i]);
         }
         return x * integrand;
@@ -47,9 +48,13 @@ namespace rgnr {
     auto TabulateFfunc(std::size_t npoints,
                        real_t      xmin,
                        real_t      xmax) -> TabulatedFunction<true> {
-      const auto          xs = Logspace(xmin, xmax, npoints);
+      const auto xs_arr = Logspace(xmin, xmax, npoints).data;
+      auto       xs_h   = Kokkos::create_mirror_view(xs_arr);
+      Kokkos::deep_copy(xs_h, xs_arr);
       std::vector<real_t> ys(npoints);
-      for (std::size_t i = 0u; i < npoints; ++i) {
+      std::vector<real_t> xs(npoints);
+      for (auto i = 0u; i < npoints; ++i) {
+        xs[i] = xs_h(i);
         if (xs[i] < 1e-6 or ys[i] > 100.0) {
           ys[i] = 0.0;
         } else {
@@ -61,122 +66,113 @@ namespace rgnr {
 
   } // namespace sync
 
-  auto SynchrotronSpectrumFromDist(const Array<real_t*>& gbeta_bins,
-                                   const Array<real_t*>& dn_dgbeta,
-                                   const Array<real_t*>& esyn_bins,
-                                   real_t                gamma_syn,
-                                   real_t esyn_at_gamma_syn) -> Array<real_t*> {
-    if (gbeta_bins.extent(0) != dn_dgbeta.extent(0)) {
-      throw std::invalid_argument(
-        "gbeta_bins and dn_dgbeta must have the same size");
-    }
-
+  auto SynchrotronSpectrumFromDist(const TabulatedDistribution& dist_prtls,
+                                   const Bins&                  bins_e_syn,
+                                   real_t                       g_syn,
+                                   real_t e_syn_at_g_syn) -> Array1D<real_t> {
     py::print("Computing synchrotron spectrum from a distribution",
               "flush"_a = true);
-    const auto synchrotron_f_func = sync::TabulateFfunc();
+    const auto fkernel_sync = sync::TabulateFfunc();
 
-    const auto n_esyn_bins = esyn_bins.extent(0);
-    auto esyn2_dn_desyn = Kokkos::View<real_t*> { "esyn2_dn_desyn", n_esyn_bins };
-    auto esyn2_dn_desyn_scat = Kokkos::Experimental::create_scatter_view(
-      esyn2_dn_desyn);
+    const auto nbins_e_syn = bins_e_syn.extent(0);
+    auto e_syn_2_f_syn = Kokkos::View<real_t*> { "e_syn_2_f_syn", nbins_e_syn };
+    auto e_syn_2_f_syn_scat = Kokkos::Experimental::create_scatter_view(
+      e_syn_2_f_syn);
 
     const auto range_policy = Kokkos::MDRangePolicy<Kokkos::Rank<2>> {
-      {                    0,           0 },
-      { gbeta_bins.extent(0), n_esyn_bins }
+      {                   0,           0 },
+      { dist_prtls.extent(), nbins_e_syn }
     };
 
     py::print(" Launching",
-              ToHumanReadable(gbeta_bins.extent(0) * n_esyn_bins, USE_POW10),
+              ToHumanReadable(dist_prtls.extent() * nbins_e_syn, USE_POW10),
               "threads",
               "end"_a   = "",
               "flush"_a = true);
-    Kokkos::parallel_for("SynchrotronSpectrumFromDist",
+    Kokkos::parallel_for("SynchrotronSpectrum",
                          range_policy,
-                         sync::KernelFromDist(gbeta_bins,
-                                              dn_dgbeta,
-                                              synchrotron_f_func,
-                                              esyn_bins,
-                                              esyn2_dn_desyn_scat,
-                                              gamma_syn,
-                                              esyn_at_gamma_syn));
-    Kokkos::Experimental::contribute(esyn2_dn_desyn, esyn2_dn_desyn_scat);
+                         sync::KernelFromDist(dist_prtls,
+                                              fkernel_sync,
+                                              bins_e_syn,
+                                              e_syn_2_f_syn_scat,
+                                              g_syn,
+                                              e_syn_at_g_syn));
+    Kokkos::Experimental::contribute(e_syn_2_f_syn, e_syn_2_f_syn_scat);
 
     Kokkos::fence();
     py::print(": OK", "flush"_a = true);
-    return esyn2_dn_desyn;
+    return e_syn_2_f_syn;
   }
 
   template <dim_t D>
-  auto SynchrotronSpectrum(const Particles<D>&   prtls,
-                           const Array<real_t*>& esyn_bins,
-                           real_t                B0,
-                           real_t                gamma_syn,
-                           real_t esyn_at_gamma_syn) -> Array<real_t*> {
+  auto SynchrotronSpectrum(const Particles<D>& prtls,
+                           const Bins&         bins_e_syn,
+                           real_t              B0,
+                           real_t              g_syn,
+                           real_t e_syn_at_g_syn) -> Array1D<real_t> {
     py::print("Computing synchrotron spectrum for", prtls.label(), "flush"_a = true);
-    const auto synchrotron_f_func = sync::TabulateFfunc();
-    const auto n_esyn_bins        = esyn_bins.extent(0);
+    const auto fkernel_sync = sync::TabulateFfunc();
+    const auto nbins_e_syn  = bins_e_syn.extent(0);
 
     py::print(" Launching",
-              ToHumanReadable(prtls.nactive() * n_esyn_bins, USE_POW10),
+              ToHumanReadable(prtls.nactive() * nbins_e_syn, USE_POW10),
               "threads",
               "end"_a   = "",
               "flush"_a = true);
 
     const auto range_policy = Kokkos::MDRangePolicy<Kokkos::Rank<2>> {
       {               0,           0 },
-      { prtls.nactive(), n_esyn_bins }
+      { prtls.nactive(), nbins_e_syn }
     };
-    auto esyn2_dn_desyn = Kokkos::View<real_t*> { "esyn2_dn_desyn", n_esyn_bins };
-    auto esyn2_dn_desyn_scat = Kokkos::Experimental::create_scatter_view(
-      esyn2_dn_desyn);
+    auto e_syn_2_f_syn = Kokkos::View<real_t*> { "e_syn_2_f_syn", nbins_e_syn };
+    auto e_syn_2_f_syn_scat = Kokkos::Experimental::create_scatter_view(
+      e_syn_2_f_syn);
     Kokkos::parallel_for("SynchrotronSpectrum",
                          range_policy,
                          sync::Kernel<D>(prtls,
-                                         synchrotron_f_func,
-                                         esyn_bins,
-                                         esyn2_dn_desyn_scat,
+                                         fkernel_sync,
+                                         bins_e_syn,
+                                         e_syn_2_f_syn_scat,
                                          B0,
-                                         gamma_syn,
-                                         esyn_at_gamma_syn));
-    Kokkos::Experimental::contribute(esyn2_dn_desyn, esyn2_dn_desyn_scat);
+                                         g_syn,
+                                         e_syn_at_g_syn));
+    Kokkos::Experimental::contribute(e_syn_2_f_syn, e_syn_2_f_syn_scat);
 
     Kokkos::fence();
     py::print(": OK", "flush"_a = true);
-    return esyn2_dn_desyn;
+    return e_syn_2_f_syn;
   }
 
   void pyDefineSynchrotronSpectrumFromDist(py::module& m) {
+    m.def("Ffunc_integrand", &sync::Ffunc_integrand, "x"_a);
+
     m.def("SynchrotronSpectrumFromDist",
           &SynchrotronSpectrumFromDist,
-          "gbeta_bins"_a,
-          "dn_dgbeta"_a,
-          "esyn_bins"_a,
-          "gamma_syn"_a,
-          "esyn_at_gamma_syn"_a,
+          "dist_prtls"_a,
+          "bins_e_syn"_a,
+          "g_syn"_a,
+          "e_syn_at_g_syn"_a,
           R"rgnrdoc(
       Compute the synchrotron spectrum from a distribution of particles
       Assumes a constant magnetic field strength
 
       Parameters
       ----------
-      gbeta_bins : Array
-        The 4-velocity bins for particles
-
-      dn_dgbeta : Array
+      dist_prtls : TabulatedDistribution
         The distribution of particles
 
-      esyn_bins : Array
-        The energy bins for the spectrum, E, logarithmically spaced
+      bins_e_syn : Bins
+        The energy bins for the spectrum
 
-      gamma_syn : float
+      g_syn : float
         Synchrotron burnoff Lorentz factor
 
-      esyn_at_gamma_syn : float
+      e_syn_at_g_syn : float
         Peak energy at the synchrotron burnoff (units of mc^2)
 
       Returns
       -------
-      Array
+      Array1D
         The synchrotron spectrum: E^2 dN / dE
       )rgnrdoc");
   }
@@ -198,42 +194,42 @@ namespace rgnr {
       prtls : Particles
         The particles to compute the spectrum for
 
-      esyn_bins : Array
-        The energy bins for the spectrum, E, logarithmically spaced
+      bins_e_syn : Bins
+        The energy bins for the spectrum
 
       B0 : float
         The magnetic field strength to which B in particles should be normalized
 
-      gamma_syn : float
-        Synchrotron burnoff Lorentz factor (w.r.t. B0)
+      g_syn : float
+        Synchrotron burnoff Lorentz factor
 
-      esyn_at_gamma_syn : float
-        Peak energy at the synchrotron burnoff in the field of B0 (units of mc^2)
+      e_syn_at_g_syn : float
+        Peak energy at the synchrotron burnoff (units of mc^2)
 
       Returns
       -------
-      Array
+      Array1D
         The synchrotron spectrum: E^2 dN / dE
       )rgnrdoc");
   }
 
   template auto SynchrotronSpectrum(const Particles<1>&,
-                                    const Array<real_t*>&,
+                                    const Bins&,
                                     real_t,
                                     real_t,
-                                    real_t) -> Array<real_t*>;
+                                    real_t) -> Array1D<real_t>;
 
   template auto SynchrotronSpectrum(const Particles<2>&,
-                                    const Array<real_t*>&,
+                                    const Bins&,
                                     real_t,
                                     real_t,
-                                    real_t) -> Array<real_t*>;
+                                    real_t) -> Array1D<real_t>;
 
   template auto SynchrotronSpectrum(const Particles<3>&,
-                                    const Array<real_t*>&,
+                                    const Bins&,
                                     real_t,
                                     real_t,
-                                    real_t) -> Array<real_t*>;
+                                    real_t) -> Array1D<real_t>;
 
   template void pyDefineSynchrotronSpectrum<1>(py::module&);
   template void pyDefineSynchrotronSpectrum<2>(py::module&);

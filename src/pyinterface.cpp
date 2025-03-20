@@ -1,11 +1,12 @@
-#include "utils/array.h"
+#include "utils/global.h"
 #include "utils/snippets.h"
-#include "utils/tabulation.h"
-#include "utils/types.h"
 
+#include "containers/array.hpp"
+#include "containers/bins.hpp"
+#include "containers/distributions.hpp"
 #include "containers/particles.hpp"
+#include "containers/tabulation.hpp"
 #include "io/h5.hpp"
-#include "physics/distributions.hpp"
 #include "physics/ic.hpp"
 #include "physics/synchrotron.hpp"
 #include "plugins/tristan-v2.hpp"
@@ -16,7 +17,6 @@
 PYBIND11_MAKE_OPAQUE(Kokkos::View<int*>);
 PYBIND11_MAKE_OPAQUE(Kokkos::View<float*>);
 PYBIND11_MAKE_OPAQUE(Kokkos::View<double*>);
-PYBIND11_MAKE_OPAQUE(rgnr::BrokenPlawDistribution);
 
 namespace py = pybind11;
 
@@ -52,9 +52,10 @@ PYBIND11_MODULE(ragnar, m) {
   rgnr::pyDefineTabulatedFunction<true>(m);
   rgnr::pyDefineTabulatedFunction<false>(m);
 
-  rgnr::pyDefineArray<int*>(m, "i", 1);
-  rgnr::pyDefineArray<float*>(m, "f", 1);
-  rgnr::pyDefineArray<double*>(m, "d", 1);
+  rgnr::pyDefineArray<int>(m);
+  rgnr::pyDefineArray<float>(m);
+  rgnr::pyDefineArray<double>(m);
+  rgnr::pyDefineBins(m);
 
   // containers
   rgnr::pyDefineParticles<1>(m);
@@ -76,10 +77,10 @@ PYBIND11_MODULE(ragnar, m) {
   rgnr::pyDefineTristanV2Plugin<3>(m);
 
   // physics
-  rgnr::pyDefineBrokenPlawDistribution(m);
+  rgnr::pyDefineGenerators(m);
   rgnr::pyDefineSynchrotronSpectrum<1>(m);
   rgnr::pyDefineSynchrotronSpectrum<2>(m);
   rgnr::pyDefineSynchrotronSpectrum<3>(m);
   rgnr::pyDefineSynchrotronSpectrumFromDist(m);
-  rgnr::pyDefineICSpectrumFromDist(m);
+  rgnr::pyDefineICSpectrum(m);
 }

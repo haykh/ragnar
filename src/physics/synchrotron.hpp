@@ -1,18 +1,18 @@
 #ifndef PHYSICS_SYNCHROTRON_HPP
 #define PHYSICS_SYNCHROTRON_HPP
 
-#include "utils/array.h"
-#include "utils/tabulation.h"
-#include "utils/types.h"
+#include "utils/global.h"
 
+#include "containers/array.hpp"
+#include "containers/distributions.hpp"
 #include "containers/particles.hpp"
+#include "containers/tabulation.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
 #include <pybind11/pybind11.h>
 
 #include <stdexcept>
-#include <string>
 
 namespace math = Kokkos;
 namespace py   = pybind11;
@@ -23,10 +23,10 @@ namespace rgnr {
 
     auto Ffunc_integrand(real_t x) -> real_t;
 
-    auto TabulateFfunc(std::size_t npoints = 200,
-                       real_t      xmin    = static_cast<real_t>(1e-6),
-                       real_t      xmax    = static_cast<real_t>(100))
-      -> TabulatedFunction<true>;
+    auto TabulateFfunc(
+      std::size_t npoints = 200,
+      real_t      xmin    = static_cast<real_t>(1e-6),
+      real_t      xmax = static_cast<real_t>(100)) -> TabulatedFunction<true>;
 
     /*
      * Computes `E dN / d(ln E)` or `E dN / dE`
@@ -35,67 +35,62 @@ namespace rgnr {
      * - if esyn_bins is linearly spaced --> `E dN / dE`
      */
     class KernelFromDist {
-      const Kokkos::View<real_t*> m_gbeta_bins, m_dn_dgbeta;
+      const Kokkos::View<real_t*> m_bins_gbeta_prtls, m_f_prtls;
+      const bool                  m_islog_bins_prtls;
 
       const Kokkos::View<real_t*> m_Ffunc_x, m_Ffunc_y;
       const real_t                m_Ffunc_xmin, m_Ffunc_xmax;
       const std::size_t           m_Ffunc_npoints;
 
-      const Kokkos::View<real_t*> m_esyn_bins_mc2;
+      const Kokkos::View<real_t*> m_bins_e_syn;
 
-      Kokkos::Experimental::ScatterView<real_t*> m_esyn2_dn_desyn_scat;
+      Kokkos::Experimental::ScatterView<real_t*> m_e_syn_2_f_syn_scat;
 
-      const real_t m_gamma_syn, m_esyn_at_gamma_syn_mc2;
+      const real_t m_g_syn, m_e_syn_at_g_syn;
 
     public:
       KernelFromDist(
-        const Array<real_t*>                              gbeta_bins,
-        const Array<real_t*>                              dn_dgbeta,
-        const TabulatedFunction<true>&                    f_func,
-        const Array<real_t*>&                             esyn_bins,
-        const Kokkos::Experimental::ScatterView<real_t*>& esyn2_dn_desyn_scat,
-        real_t                                            gamma_syn,
-        real_t                                            esyn_at_gamma_syn)
-        : m_gbeta_bins { gbeta_bins.data }
-        , m_dn_dgbeta { dn_dgbeta.data }
-        , m_Ffunc_x { f_func.xView() }
-        , m_Ffunc_y { f_func.yView() }
-        , m_Ffunc_xmin { f_func.xMin() }
-        , m_Ffunc_xmax { f_func.xMax() }
-        , m_Ffunc_npoints { f_func.nPoints() }
-        , m_esyn_bins_mc2 { esyn_bins.data }
-        , m_esyn2_dn_desyn_scat { esyn2_dn_desyn_scat }
-        , m_gamma_syn { gamma_syn }
-        , m_esyn_at_gamma_syn_mc2 { esyn_at_gamma_syn } {
-        if (esyn_bins.unit != EnergyUnits::mec2 and
-            esyn_bins.unit != EnergyUnits::mpc2) {
-          throw std::runtime_error("esyn_bins must be in units of mc^2");
-        }
-        if (gbeta_bins.extent(0) != dn_dgbeta.extent(0)) {
-          throw std::invalid_argument(
-            "gbeta_bins and dn_dgbeta must have the same size");
-        }
-      }
+        const TabulatedDistribution&                      prtls,
+        const TabulatedFunction<true>&                    fkernel_sync,
+        const Bins&                                       bins_e_syn,
+        const Kokkos::Experimental::ScatterView<real_t*>& e_syn_2_f_syn_scat,
+        real_t                                            g_syn,
+        real_t                                            e_syn_at_g_syn)
+        : m_bins_gbeta_prtls { prtls.EnergyBins().data }
+        , m_f_prtls { prtls.F().data }
+        , m_islog_bins_prtls { prtls.log_spaced() }
+        , m_Ffunc_x { fkernel_sync.xView() }
+        , m_Ffunc_y { fkernel_sync.yView() }
+        , m_Ffunc_xmin { fkernel_sync.xMin() }
+        , m_Ffunc_xmax { fkernel_sync.xMax() }
+        , m_Ffunc_npoints { fkernel_sync.nPoints() }
+        , m_bins_e_syn { bins_e_syn.data }
+        , m_e_syn_2_f_syn_scat { e_syn_2_f_syn_scat }
+        , m_g_syn { g_syn }
+        , m_e_syn_at_g_syn { e_syn_at_g_syn } {}
 
       KOKKOS_INLINE_FUNCTION
       void operator()(std::size_t gbidx, std::size_t eidx) const {
-        const auto photon_e_mc2 = m_esyn_bins_mc2(eidx);
-        const auto gbeta        = m_gbeta_bins(gbidx);
-        const auto dn           = m_dn_dgbeta(gbidx);
+        const auto e_syn       = m_bins_e_syn(eidx);
+        const auto gbeta_prtls = m_bins_gbeta_prtls(gbidx);
+        const auto f_prtls     = m_f_prtls(gbidx);
 
-        const auto peak_energy_mc2 = m_esyn_at_gamma_syn_mc2 * gbeta * gbeta /
-                                     (m_gamma_syn * m_gamma_syn);
+        const auto e_peak = m_e_syn_at_g_syn * gbeta_prtls * gbeta_prtls /
+                            (m_g_syn * m_g_syn);
 
-        if (peak_energy_mc2 > 0.0) {
-          const auto Fval = InterpolateTabulatedFunction<LOGGRID>(
-            photon_e_mc2 / peak_energy_mc2,
-            m_Ffunc_x,
-            m_Ffunc_y,
-            m_Ffunc_npoints,
-            m_Ffunc_xmin,
-            m_Ffunc_xmax);
-          auto esyn2_dn_desyn_scat_acc   = m_esyn2_dn_desyn_scat.access();
-          esyn2_dn_desyn_scat_acc(eidx) += dn * photon_e_mc2 * Fval;
+        if (e_peak > 0.0) {
+          const auto Fval = InterpolateTabulatedFunction<LOGGRID>(e_syn / e_peak,
+                                                                  m_Ffunc_x,
+                                                                  m_Ffunc_y,
+                                                                  m_Ffunc_npoints,
+                                                                  m_Ffunc_xmin,
+                                                                  m_Ffunc_xmax);
+          auto e_syn_2_f_syn_acc = m_e_syn_2_f_syn_scat.access();
+          if (m_islog_bins_prtls) {
+            e_syn_2_f_syn_acc(eidx) += f_prtls * e_syn * gbeta_prtls * Fval;
+          } else {
+            e_syn_2_f_syn_acc(eidx) += f_prtls * e_syn * Fval;
+          }
         }
       }
     };
@@ -123,7 +118,7 @@ namespace rgnr {
     public:
       Kernel(const Particles<D>&            prtls,
              const TabulatedFunction<true>& f_func,
-             const Array<real_t*>&          esyn_bins,
+             const Bins&                    esyn_bins,
              const Kokkos::Experimental::ScatterView<real_t*>& esyn2_dn_desyn_scat,
              real_t B0,
              real_t gamma_syn,
@@ -241,18 +236,14 @@ namespace rgnr {
 
   } // namespace sync
 
-  auto SynchrotronSpectrumFromDist(const Array<real_t*>&,
-                                   const Array<real_t*>&,
-                                   const Array<real_t*>&,
+  auto SynchrotronSpectrumFromDist(const TabulatedDistribution&,
+                                   const Bins&,
                                    real_t,
-                                   real_t) -> Array<real_t*>;
+                                   real_t) -> Array1D<real_t>;
 
   template <dim_t D>
-  auto SynchrotronSpectrum(const Particles<D>&,
-                           const Array<real_t*>&,
-                           real_t,
-                           real_t,
-                           real_t) -> Array<real_t*>;
+  auto SynchrotronSpectrum(const Particles<D>&, const Bins&, real_t, real_t, real_t)
+    -> Array1D<real_t>;
 
   template <dim_t D>
   void pyDefineSynchrotronSpectrum(py::module&);

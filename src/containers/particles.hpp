@@ -1,8 +1,11 @@
 #ifndef CONTAINERS_PARTICLES_HPP
 #define CONTAINERS_PARTICLES_HPP
 
-#include "utils/array.h"
-#include "utils/types.h"
+#include "utils/global.h"
+
+#include "containers/array.hpp"
+#include "containers/bins.hpp"
+#include "containers/distributions.hpp"
 
 #include <Kokkos_Core.hpp>
 
@@ -41,14 +44,13 @@ namespace rgnr {
     auto repr() const -> std::string;
 
     // computes dN / de, where E is gamma or gamma * beta
-    auto energyDistribution(const Array<real_t*>&, bool = true) const
-      -> Array<real_t*>;
+    auto energyDistribution(const Bins&, bool = true) const -> TabulatedDistribution;
 
     // accessors
-    auto Xarr(std::size_t) const -> Array<real_t*>;
-    auto Uarr(std::size_t) const -> Array<real_t*>;
-    auto Earr(std::size_t) const -> Array<real_t*>;
-    auto Barr(std::size_t) const -> Array<real_t*>;
+    auto Xarr(std::size_t) const -> Array1D<real_t>;
+    auto Uarr(std::size_t) const -> Array1D<real_t>;
+    auto Earr(std::size_t) const -> Array1D<real_t>;
+    auto Barr(std::size_t) const -> Array1D<real_t>;
 
   private:
     bool        m_is_allocated { false };

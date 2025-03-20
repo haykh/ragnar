@@ -1,34 +1,28 @@
 #ifndef UTILS_SNIPPETS_H
 #define UTILS_SNIPPETS_H
 
-#include "utils/array.h"
-#include "utils/types.h"
+#include "utils/global.h"
 
-#include <Kokkos_Core.hpp>
+#include "containers/array.hpp"
+
 #include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 
 #include <cmath>
 #include <limits>
 #include <string>
 #include <type_traits>
-#include <vector>
 
 namespace py = pybind11;
 
 namespace rgnr {
 
-  auto Linspace(real_t start, real_t stop, std::size_t num) -> std::vector<real_t>;
-  auto Logspace(real_t start, real_t stop, std::size_t num) -> std::vector<real_t>;
-
-  auto LinspaceView(real_t start, real_t stop, std::size_t num) -> Array<real_t*>;
-  auto LogspaceView(real_t start, real_t stop, std::size_t num) -> Array<real_t*>;
+  auto Linspace(real_t, real_t, std::size_t) -> Array1D<real_t>;
+  auto Logspace(real_t, real_t, std::size_t) -> Array1D<real_t>;
 
   void pyDefineLinLogSpaces(py::module&);
 
   template <class T>
-  inline auto AlmostEqual(T a, T b, T eps = std::numeric_limits<T>::epsilon())
-    -> bool {
+  inline auto AlmostEqual(T a, T b, T eps = std::numeric_limits<T>::epsilon()) -> bool {
     static_assert(std::is_floating_point_v<T>, "T must be a floating point type");
     return (a == b) ||
            (std::abs(a - b) <= std::min(std::abs(a), std::abs(b)) * eps);
@@ -40,8 +34,8 @@ namespace rgnr {
     return std::abs(a) <= eps;
   }
 
-  auto TemplateReplace(const std::string&, const std::map<std::string, real_t>&)
-    -> std::string;
+  auto TemplateReplace(const std::string&,
+                       const std::map<std::string, real_t>&) -> std::string;
 
   template <class T>
   auto ToHumanReadable(T, bool) -> std::string;

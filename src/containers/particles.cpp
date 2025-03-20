@@ -1,8 +1,10 @@
 #include "containers/particles.hpp"
 
-#include "utils/array.h"
+#include "utils/global.h"
 #include "utils/snippets.h"
-#include "utils/types.h"
+
+#include "containers/array.hpp"
+#include "containers/distributions.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
@@ -48,8 +50,8 @@ namespace rgnr {
   }
 
   template <dim_t D>
-  auto Particles<D>::energyDistribution(const Array<real_t*>& energy_bins,
-                                        bool fourvel) const -> Array<real_t*> {
+  auto Particles<D>::energyDistribution(const Bins& energy_bins,
+                                        bool fourvel) const -> TabulatedDistribution {
     py::print("Computing energy distribution for",
               label(),
               "...",
@@ -63,7 +65,7 @@ namespace rgnr {
     Kokkos::parallel_reduce(
       "EnergyBinsMinMax",
       e_bins.extent(0),
-      KOKKOS_LAMBDA(std::size_t p, Kokkos::MinMaxScalar<real_t>& leminmax) {
+      KOKKOS_LAMBDA(std::size_t p, Kokkos::MinMaxScalar<real_t> & leminmax) {
         if (e_bins(p) < leminmax.min_val) {
           leminmax.min_val = e_bins(p);
         }
@@ -79,6 +81,8 @@ namespace rgnr {
     auto energy_distribution_scat = Kokkos::Experimental::create_scatter_view(
       energy_distribution);
     const auto& Uarr = this->U;
+
+    const auto is_logbins = energy_bins.log_spaced;
 
     Kokkos::parallel_for(
       "ComputeEnergyDistribution",
@@ -103,15 +107,19 @@ namespace rgnr {
           idx = ei > n - 1 ? n - 1 : ei;
         }
 
-        auto energy_distribution_acc  = energy_distribution_scat.access();
-        energy_distribution_acc(idx) += 1.0 / energy;
+        auto energy_distribution_acc = energy_distribution_scat.access();
+        if (is_logbins) {
+          energy_distribution_acc(idx) += 1.0 / energy;
+        } else {
+          energy_distribution_acc(idx) += 1.0;
+        }
       });
 
     Kokkos::Experimental::contribute(energy_distribution, energy_distribution_scat);
     Kokkos::fence();
 
     py::print(": OK", "flush"_a = true);
-    return energy_distribution;
+    return { energy_bins, energy_distribution };
   }
 
   template <dim_t D>
@@ -203,33 +211,33 @@ namespace rgnr {
   auto getSubview(const std::string&               name,
                   std::size_t                      comp,
                   std::size_t                      n,
-                  const Kokkos::View<real_t* [N]>& view) -> Array<real_t*> {
+                  const Kokkos::View<real_t* [N]>& view) -> Array1D<real_t> {
     if (comp >= N) {
       throw std::out_of_range("Invalid component");
     }
-    Array<real_t*> Arr {};
+    Array1D<real_t> Arr {};
     Arr.data = Kokkos::View<real_t*> { name + "_" + std::to_string(comp + 1), n };
     Kokkos::deep_copy(Arr.data, Kokkos::subview(view, Kokkos::ALL, comp));
     return Arr;
   }
 
   template <dim_t D>
-  auto Particles<D>::Xarr(std::size_t d) const -> Array<real_t*> {
+  auto Particles<D>::Xarr(std::size_t d) const -> Array1D<real_t> {
     return getSubview<D>("X", d, m_nactive, X);
   }
 
   template <dim_t D>
-  auto Particles<D>::Uarr(std::size_t d) const -> Array<real_t*> {
+  auto Particles<D>::Uarr(std::size_t d) const -> Array1D<real_t> {
     return getSubview<3>("U", d, m_nactive, U);
   }
 
   template <dim_t D>
-  auto Particles<D>::Earr(std::size_t d) const -> Array<real_t*> {
+  auto Particles<D>::Earr(std::size_t d) const -> Array1D<real_t> {
     return getSubview<3>("E", d, m_nactive, E);
   }
 
   template <dim_t D>
-  auto Particles<D>::Barr(std::size_t d) const -> Array<real_t*> {
+  auto Particles<D>::Barr(std::size_t d) const -> Array1D<real_t> {
     return getSubview<3>("B", d, m_nactive, B);
   }
 
@@ -269,7 +277,7 @@ namespace rgnr {
 
               Parameters
               ----------
-              energy_bins : Array
+              energy_bins : Bins
                 Energy bins
 
               fourvel : bool

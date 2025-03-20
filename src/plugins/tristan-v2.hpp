@@ -1,13 +1,12 @@
 #ifndef PLUGINS_TRISTAN_V2_HPP
 #define PLUGINS_TRISTAN_V2_HPP
 
-#include "utils/types.h"
+#include "utils/global.h"
 
 #include "containers/particles.hpp"
 
 #include <pybind11/pybind11.h>
 
-#include <stdexcept>
 #include <string>
 
 namespace py = pybind11;

@@ -1,68 +1,25 @@
 #include "utils/snippets.h"
 
-#include "utils/array.h"
-#include "utils/types.h"
+#include "utils/global.h"
+
+#include "containers/array.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <pybind11/pybind11.h>
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <format>
 #include <map>
 #include <string>
-#include <vector>
 
 namespace math = Kokkos;
 namespace py   = pybind11;
 using namespace pybind11::literals;
 
 namespace rgnr {
-  auto Linspace(real_t start, real_t stop, std::size_t num) -> std::vector<real_t> {
-    if (start >= stop) {
-      throw std::runtime_error("Linspace start must be < stop");
-    }
-    if (num == 0) {
-      return {};
-    } else if (num == 1) {
-      return { start };
-    }
-    std::vector<real_t> result(num);
-    for (std::size_t i = 0; i < num; ++i) {
-      result[i] = start + static_cast<real_t>(i) * (stop - start) /
-                            static_cast<real_t>(num - 1);
-    }
-    return result;
-  }
 
-  auto Logspace(real_t start, real_t stop, std::size_t num) -> std::vector<real_t> {
-    if (start < 0 or stop < 0) {
-      throw std::runtime_error("Logspace start and stop must be positive");
-    }
-    if (AlmostZero(start) or AlmostZero(stop)) {
-      throw std::runtime_error("Logspace start and stop must be nonzero");
-    }
-    if (start >= stop) {
-      throw std::runtime_error("Logspace start must be < stop");
-    }
-    if (num == 0) {
-      return {};
-    } else if (num == 1) {
-      return { start };
-    }
-    std::vector<real_t> result(num);
-    for (std::size_t i = 0; i < num; ++i) {
-      result[i] = std::pow(
-        10,
-        std::log10(start) + static_cast<real_t>(i) *
-                              (std::log10(stop) - std::log10(start)) /
-                              static_cast<real_t>(num - 1));
-    }
-    return result;
-  }
-
-  auto LinspaceView(real_t start, real_t stop, std::size_t num) -> Array<real_t*> {
+  auto Linspace(real_t start, real_t stop, std::size_t num) -> Array1D<real_t> {
     if (start >= stop) {
       throw std::runtime_error("Linspace start must be < stop");
     }
@@ -80,13 +37,11 @@ namespace rgnr {
     return arr;
   }
 
-  auto LogspaceView(real_t start, real_t stop, std::size_t num) -> Array<real_t*> {
+  auto Logspace(real_t start, real_t stop, std::size_t num) -> Array1D<real_t> {
     auto arr = Kokkos::View<real_t*> { "logspace", num };
-    if (start < 0 or stop < 0) {
-      throw std::runtime_error("Logspace start and stop must be positive");
-    }
-    if (AlmostZero(start) or AlmostZero(stop)) {
-      throw std::runtime_error("Logspace start and stop must be nonzero");
+    if (start <= 0.0 or stop <= 0.0) {
+      throw std::runtime_error(
+        "Logspace start and stop must be strictly positive");
     }
     if (start >= stop) {
       throw std::runtime_error("Logspace start must be < stop");
@@ -122,7 +77,7 @@ namespace rgnr {
     if (use_suffixes) {
       const auto suffixes = std::array<std::string, 9> { "p", "n", "μ", "m", "",
                                                          "k", "M", "G", "T" };
-      std::size_t sidx    = 4;
+      std::size_t sidx = 4;
       while (value_double < 0.01 or value_double >= 1000) {
         if (value_double < 0.01) {
           if (sidx == 0) {
@@ -215,45 +170,6 @@ namespace rgnr {
 
   void pyDefineLinLogSpaces(py::module& m) {
     m.def("Linspace", &Linspace, "start"_a, "stop"_a, "num"_a, R"rgnrdoc(
-        Create a linearly spaced vector of `num` elements between `start` and `stop`
-
-        Parameters
-        ----------
-        start : float
-          The start of the range
-
-        stop : float
-          The end of the range
-
-        num : int
-          The number of elements in the range
-
-        Returns
-        -------
-        list 
-          A list of `num` elements linearly spaced between `start` and `stop`
-          )rgnrdoc");
-    m.def("Logspace", &Logspace, "start"_a, "stop"_a, "num"_a, R"rgnrdoc(
-        Create a logarithmically spaced vector of `num` elements between `start` and `stop`
-
-        Parameters
-        ----------
-        start : float
-          The start of the range
-
-        stop : float
-          The end of the range
-
-        num : int
-          The number of elements in the range
-
-        Returns
-        -------
-        list 
-          A list of `num` elements logarithmically spaced between `start` and `stop`
-        )rgnrdoc");
-
-    m.def("LinspaceView", &LinspaceView, "start"_a, "stop"_a, "num"_a, R"rgnrdoc(
         Create a linearly spaced view of `num` elements between `start` and `stop`
 
         Parameters
@@ -269,10 +185,10 @@ namespace rgnr {
 
         Returns
         -------
-        Array
+        Array1D
           A view of `num` elements linearly spaced between `start` and `stop`
         )rgnrdoc");
-    m.def("LogspaceView", &LogspaceView, "start"_a, "stop"_a, "num"_a, R"rgnrdoc(
+    m.def("Logspace", &Logspace, "start"_a, "stop"_a, "num"_a, R"rgnrdoc(
         Create a logarithmically spaced view of `num` elements between `start` and `stop`
 
         Parameters
@@ -288,7 +204,7 @@ namespace rgnr {
 
         Returns
         -------
-        Array
+        Array1D
           A view of `num` elements logarithmically spaced between `start` and `stop`
         )rgnrdoc");
   }

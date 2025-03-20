@@ -1,9 +1,11 @@
-#include "utils/tabulation.h"
+#include "containers/tabulation.hpp"
 
-#include "utils/array.h"
-#include "utils/types.h"
+#include "utils/global.h"
+
+#include "containers/array.hpp"
 
 #include <Kokkos_Core.hpp>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
 #include <stdexcept>
@@ -15,9 +17,9 @@ using namespace pybind11::literals;
 namespace rgnr {
 
   template <bool LG>
-  TabulatedFunction<LG>::TabulatedFunction(const Array<real_t*>& x,
-                                           const Array<real_t*>& y,
-                                           real_t                yfill)
+  TabulatedFunction<LG>::TabulatedFunction(const Array1D<real_t>& x,
+                                           const Array1D<real_t>& y,
+                                           real_t                 yfill)
     : m_x { x }
     , m_y { y }
     , m_yfill { yfill }
@@ -39,6 +41,27 @@ namespace rgnr {
   }
 
   template <bool LG>
+  TabulatedFunction<LG>::TabulatedFunction(const py::array_t<real_t>& x,
+                                           const py::array_t<real_t>& y,
+                                           real_t                     yfill)
+    : m_yfill { yfill }
+    , m_n { (std::size_t)x.size() } {
+    m_x.data = Kokkos::View<real_t*> { "x", m_n };
+    m_y.data = Kokkos::View<real_t*> { "y", m_n };
+    auto x_h = Kokkos::create_mirror_view(m_x.data);
+    auto y_h = Kokkos::create_mirror_view(m_y.data);
+    for (auto i = 0u; i < m_n; ++i) {
+      x_h(i) = x.at(i);
+      y_h(i) = y.at(i);
+    }
+    Kokkos::deep_copy(m_x.data, x_h);
+    Kokkos::deep_copy(m_y.data, y_h);
+
+    findMinMax();
+    verify();
+  }
+
+  template <bool LG>
   TabulatedFunction<LG>::TabulatedFunction(const std::vector<real_t>& x,
                                            const std::vector<real_t>& y,
                                            real_t                     yfill)
@@ -54,7 +77,6 @@ namespace rgnr {
     }
     Kokkos::deep_copy(m_x.data, x_h);
     Kokkos::deep_copy(m_y.data, y_h);
-
     findMinMax();
     verify();
   }
@@ -66,7 +88,7 @@ namespace rgnr {
     Kokkos::parallel_reduce(
       "XMinMax",
       m_n,
-      KOKKOS_LAMBDA(std::size_t p, Kokkos::MinMaxScalar<real_t>& lxminmax) {
+      KOKKOS_LAMBDA(std::size_t p, Kokkos::MinMaxScalar<real_t> & lxminmax) {
         if (xref(p) < lxminmax.min_val) {
           lxminmax.min_val = xref(p);
         }
@@ -98,11 +120,11 @@ namespace rgnr {
   void pyDefineTabulatedFunction(py::module& m) {
     std::string variant = LG ? "_log" : "";
     py::class_<TabulatedFunction<LG>>(m, ("TabulatedFunction" + variant).c_str())
-      .def(py::init<Array<real_t*>, Array<real_t*>, real_t>(),
+      .def(py::init<const Array1D<real_t>&, const Array1D<real_t>&, real_t>(),
            "x"_a,
            "y"_a,
            "yfill"_a = 0.0)
-      .def(py::init<std::vector<real_t>, std::vector<real_t>, real_t>(),
+      .def(py::init<py::array_t<real_t>&, const py::array_t<real_t>&, real_t>(),
            "x"_a,
            "y"_a,
            "yfill"_a = 0.0)

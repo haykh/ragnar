@@ -1,8 +1,10 @@
 #ifndef PHYSICS_IC_HPP
 #define PHYSICS_IC_HPP
 
-#include "utils/array.h"
-#include "utils/types.h"
+#include "utils/global.h"
+
+#include "containers/array.hpp"
+#include "containers/distributions.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
@@ -17,89 +19,81 @@ namespace rgnr {
 
     KOKKOS_INLINE_FUNCTION
     auto KNfunc(real_t Gamma, real_t q) -> real_t {
-      return 2 * q * math::log(q) + (1 + 2 * q) * (1 - q) +
-             0.5 * (1 - q) * (Gamma * q) * (Gamma * q) / (1 + Gamma * q);
+      const real_t Gq = Gamma * q;
+      return 2 * q * math::log(q) +
+             (1 - q) * ((1 + 2 * q) + 0.5 * (Gq) * (Gq) / (1 + Gq));
     }
 
     /*
-     * Computes `E dN / d(ln E)` or `E dN / dE`
-     * ... for IC radiation from a given distribution
-     * - if eic_bins is logarithmically spaced --> `E^2 dN / dE`
-     * - if eic_bins is linearly spaced --> `E dN / dE`
+     * Computes `E_ic^2 f(E_ic)`
      */
-    template <class S>
     class Kernel {
-      const Kokkos::View<real_t*> m_gamma_bins;
-      const Kokkos::View<real_t*> m_dn_dgamma;
-
-      const S                     m_dn_desoft;
-      const Kokkos::View<real_t*> m_esoft_bins_mc2;
-      const Kokkos::View<real_t*> m_eic_bins_mc2;
-
-      Kokkos::Experimental::ScatterView<real_t*> m_eic2_dn_deic_scat;
+      const Kokkos::View<real_t*>                m_bins_g_prtls;
+      const Kokkos::View<real_t*>                m_f_prtls;
+      const bool                                 m_islog_bins_prtls;
+      const Kokkos::View<real_t*>                m_bins_e_soft_photons;
+      const Kokkos::View<real_t*>                m_f_soft_photons;
+      const Kokkos::View<real_t*>                m_bins_e_ic;
+      Kokkos::Experimental::ScatterView<real_t*> m_e_ic_2_f_ic_scat;
 
     public:
-      Kernel(const Array<real_t*>& gamma_bins,
-             const Array<real_t*>& dn_dgamma,
-             const Array<real_t*>& esoft_bins,
-             const S&              dn_desoft_func,
-             const Array<real_t*>& eic_bins,
-             const Kokkos::Experimental::ScatterView<real_t*>& eic2_dn_deic_scat)
-        : m_gamma_bins { gamma_bins.data }
-        , m_dn_dgamma { dn_dgamma.data }
-        , m_dn_desoft { dn_desoft_func }
-        , m_esoft_bins_mc2 { esoft_bins.data }
-        , m_eic_bins_mc2 { eic_bins.data }
-        , m_eic2_dn_deic_scat { eic2_dn_deic_scat } {
-        // dn_desoft_func.AssertEnergyUnits(esoft_bins.unit);
-        if (dn_desoft_func.unit != esoft_bins.unit) {
+      Kernel(const TabulatedDistribution& dist_prtls,
+             const TabulatedDistribution& dist_soft_photons,
+             const Bins&                  bins_e_ic,
+             const Kokkos::Experimental::ScatterView<real_t*>& e_ic_2_f_ic_scat)
+        : m_bins_g_prtls { dist_prtls.EnergyBins().data }
+        , m_f_prtls { dist_prtls.F().data }
+        , m_islog_bins_prtls { dist_prtls.log_spaced() }
+        , m_bins_e_soft_photons { dist_soft_photons.EnergyBins().data }
+        , m_f_soft_photons { dist_soft_photons.F().data }
+        , m_bins_e_ic { bins_e_ic.data }
+        , m_e_ic_2_f_ic_scat { e_ic_2_f_ic_scat } {
+        if (dist_soft_photons.EnergyBins().unit != EnergyUnits::mec2) {
           throw std::runtime_error(
-            "dn_desoft_func must be in the same units as esoft_bins");
+            "Soft photons energy bins must be in units of mec^2");
         }
-        if (eic_bins.unit != EnergyUnits::mec2) {
-          throw std::runtime_error("eic_bins must be in units of mc^2");
-        }
-        if (gamma_bins.extent(0) != dn_dgamma.extent(0)) {
-          throw std::runtime_error(
-            "gamma_bins and dn_dgamma must have the same size");
+        if (bins_e_ic.unit != EnergyUnits::mec2) {
+          throw std::runtime_error("E_ic must be in units of mec^2");
         }
       }
 
       KOKKOS_INLINE_FUNCTION
       void operator()(std::size_t gidx, std::size_t eidx, std::size_t esidx) const {
-        const auto gamma = m_gamma_bins(gidx);
-        const auto dn    = m_dn_dgamma(gidx);
+        const auto g_prtls = m_bins_g_prtls(gidx);
+        const auto f_prtls = m_f_prtls(gidx);
 
-        const auto esoft_mc2 = m_esoft_bins_mc2(esidx);
-        const auto dn_desoft = m_dn_desoft.dn(esoft_mc2);
+        const auto e_soft_photons = m_bins_e_soft_photons(esidx);
+        const auto f_soft_photons = m_f_soft_photons(esidx);
 
-        const auto eic_mc2 = m_eic_bins_mc2(eidx);
+        const auto e_ic = m_bins_e_ic(eidx);
 
-        const auto Gamma = gamma / (4 * esoft_mc2);
+        const auto Gamma = 4 * g_prtls * e_soft_photons;
 
-        if (eic_mc2 > gamma * Gamma / (1 + Gamma)) {
+        if (e_ic > g_prtls * Gamma / (1 + Gamma)) {
           return;
         }
-        const auto q = (eic_mc2 / gamma) / (Gamma * (1 - (eic_mc2 / gamma)));
+        const auto q = (e_ic / g_prtls) / (Gamma * (1 - (e_ic / g_prtls)));
 
         const auto KNval = KNfunc(Gamma, q);
 
-        auto eic2_dn_deic_acc   = m_eic2_dn_deic_scat.access();
-        eic2_dn_deic_acc(eidx) += dn * (dn_desoft / esoft_mc2) * eic_mc2 *
-                                  KNval / (gamma * gamma);
+        auto e_ic_2_f_ic_acc = m_e_ic_2_f_ic_scat.access();
+        if (m_islog_bins_prtls) {
+          e_ic_2_f_ic_acc(eidx) += f_prtls * (f_soft_photons / e_soft_photons) *
+                                   e_ic * e_ic * KNval / g_prtls;
+        } else {
+          e_ic_2_f_ic_acc(eidx) += f_prtls * (f_soft_photons / e_soft_photons) *
+                                   e_ic * e_ic * KNval / (g_prtls * g_prtls);
+        }
       }
     };
 
   } // namespace ic
 
-  template <class S>
-  auto ICSpectrumFromDist(const Array<real_t*>&,
-                          const Array<real_t*>&,
-                          const Array<real_t*>&,
-                          const S&,
-                          const Array<real_t*>&) -> Array<real_t*>;
+  auto ICSpectrum(const TabulatedDistribution&,
+                  const TabulatedDistribution&,
+                  const Bins&) -> Array1D<real_t>;
 
-  void pyDefineICSpectrumFromDist(py::module&);
+  void pyDefineICSpectrum(py::module&);
 
 } // namespace rgnr
 

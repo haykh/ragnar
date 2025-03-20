@@ -1,3 +1,4 @@
+set(Python_FIND_VIRTUALENV ONLY)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/extern/pybind11)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/styling.cmake)
@@ -30,16 +31,10 @@ else()
   message(STATUS "${Green}Kokkos found${ColorReset}")
 endif()
 
-find_package(toml11 QUIET)
-if(NOT toml11_FOUND)
-  message(STATUS "${Yellow}toml11 not found, fetching from source${ColorReset}")
-  set(TOML11_BUILD_TESTS OFF)
-  set(TOML11_BUILD_EXAMPLES OFF)
-  FetchContent_Declare(
-    toml11
-    GIT_REPOSITORY https://github.com/ToruNiina/toml11.git
-    GIT_TAG v4.4.0)
-  FetchContent_MakeAvailable(toml11)
-else()
-  message(STATUS "${Green}toml11 found${ColorReset}")
-endif()
+# find_package(toml11 QUIET) if(NOT toml11_FOUND) message(STATUS
+# "${Yellow}toml11 not found, fetching from source${ColorReset}")
+# set(TOML11_BUILD_TESTS OFF) set(TOML11_BUILD_EXAMPLES OFF)
+# FetchContent_Declare( toml11 GIT_REPOSITORY
+# https://github.com/ToruNiina/toml11.git GIT_TAG v4.4.0)
+# FetchContent_MakeAvailable(toml11) else() message(STATUS "${Green}toml11
+# found${ColorReset}") endif()

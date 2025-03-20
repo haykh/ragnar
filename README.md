@@ -20,12 +20,46 @@ cmake --build build -j
 ```
 > If `Kokkos` is installed externally, no special flags are needed here.
 
-Compilation produces a shared library file `.so` (located in `build/src/`) which can be imported directly in `python`. 
+Usage examples together with unit tests are located in `src/examples` and `src/tests`.
+
+Compilation produces a shared library file `.so` (located in `build/`) which can be imported directly in `python`. 
 
 ```python
 import ragnar as rg
 rg.Initialize(); # always remember to initialize Kokkos
 ```
+
+### Generating/manipulating synthetic data
+
+You can generate synthetic data using built-in functions:
+
+```python
+dist_prtls = rg.TabulatedDistribution(
+    rg.Logbins(1, 100, 200), rg.PlawGenerator(-2, 1, 100)
+)
+```
+
+After that, you may use this data further; for instance, to generate a synchrotron signal from a given distribution of particles:
+
+```python
+# first, generate the photon bins
+bins_e_syn = rg.Logbins(0.01, 1e7, 200)
+bins_e_syn.unit = rg.EnergyUnits.mec2
+
+e_syn_2_f_syn = rg.SynchrotronSpectrumFromDist(dist_prtls, bins_e_syn, 1, 1)
+
+# docstring can be accessed via `rg.SynchrotronSpectrumFromDist?`
+```
+
+Then you can plot the generated data:
+
+```python
+plt.plot(bins_e_syn.as_array(), e_syn_2_f_syn.as_array())
+plt.xscale("log")
+plt.yscale("log")
+```
+
+### Post-processing output data
 
 All functions have docstrings which can be accessed via, e.g., `rg.SynchrotronSpectrum_3D?`.
 
@@ -44,16 +78,14 @@ protons = plugin.readParticles("p", 3)
 `.readParticles` returns a `Particles` object, which is a special container to store all the read data (if compiled with GPU support, data is stored only on the GPU). With this object, one can, for instance, compute an energy distribution for the given species:
 
 ```python
-gbins = rg.LogspaceView(1e-2, 1e3, 200) # define gamma * beta bins
-e_count = electrons.energyDistribution(gbins)
+gbins = rg.Logbins(1e-2, 1e3, 200) # define gamma * beta bins
+e_dist = electrons.energyDistribution(gbins)
 
 # plot d N / d (gamma * beta)
-plt.plot(gbins.as_vector(), e_count.as_vector())
+plt.plot(e_dist.EnergyBins().as_array(), e_dist.F().as_array())
 plt.xscale("log")
 plt.yscale("log")
 ```
-
-> Since `e_count` is an `Array` object with data potentially stored on the GPU, you need to first cast it to a vector before plotting (which essentially returns a python list).
 
 ## Dependencies
 
@@ -61,19 +93,17 @@ All the dependencies (except for `pybind11`) can be built in-tree (except for th
 
 - [`Kokkos`](https://github.com/kokkos/kokkos)
 - [`HighFive`](https://github.com/highfive-devs/highfive)
-- [`toml11`](https://github.com/ToruNiina/toml11)
 - [`pybind11`](https://github.com/pybind/pybind11) : no need to install
 
 > `pybind11` is downloaded with the code when you clone with `--recursive`.
 
 ### Using `spack`
 
-You may install all the dependencies using the `spack` package manager:
+You may install all of the dependencies using the `spack` package manager:
 
 ```sh
 spack env create ragnar
 spack env activate ragnar
 spack install --add kokkos [+cuda] [+wrapper] [gpu_arch=...]
-spack install --add toml11
 spack install --add highfive
 ```

@@ -1,6 +1,6 @@
 #include "io/h5.hpp"
 
-#include "utils/array.h"
+#include "containers/array.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <pybind11/pybind11.h>
@@ -16,7 +16,7 @@ namespace rgnr::io::h5 {
   auto Read1DArray(const std::string& filename,
                    const std::string& dsetname,
                    std::size_t        size,
-                   std::size_t        stride) -> Array<T*> {
+                   std::size_t        stride) -> Array1D<T> {
     auto file    = HighFive::File(filename, HighFive::File::ReadOnly);
     auto dataset = file.getDataSet(dsetname);
     auto dims    = dataset.getDimensions();
@@ -32,7 +32,7 @@ namespace rgnr::io::h5 {
         "Number of read quantity exceeds allocated space");
     }
     py::print("Reading", dsetname, "from", filename, "...", "end"_a = "", "flush"_a = true);
-    Array<T*> array;
+    Array1D<T> array;
     array.data   = Kokkos::View<T*> { dsetname, size };
     auto array_h = Kokkos::create_mirror_view(array.data);
     try {
@@ -49,7 +49,7 @@ namespace rgnr::io::h5 {
   template <typename T>
   void Write1DArray(const std::string& filename,
                     const std::string& dsetname,
-                    const Array<T*>&   array) {
+                    const Array1D<T>&  array) {
     HighFive::File file(filename,
                         HighFive::File::ReadWrite | HighFive::File::Create);
     py::print("Writing", dsetname, "to", filename, "...", "end"_a = "", "flush"_a = true);
@@ -119,25 +119,25 @@ namespace rgnr::io::h5 {
   template auto Read1DArray<int>(const std::string&,
                                  const std::string&,
                                  std::size_t,
-                                 std::size_t) -> Array<int*>;
+                                 std::size_t) -> Array1D<int>;
   template auto Read1DArray<float>(const std::string&,
                                    const std::string&,
                                    std::size_t,
-                                   std::size_t) -> Array<float*>;
+                                   std::size_t) -> Array1D<float>;
   template auto Read1DArray<double>(const std::string&,
                                     const std::string&,
                                     std::size_t,
-                                    std::size_t) -> Array<double*>;
+                                    std::size_t) -> Array1D<double>;
 
   template void Write1DArray<int>(const std::string&,
                                   const std::string&,
-                                  const Array<int*>&);
+                                  const Array1D<int>&);
   template void Write1DArray<float>(const std::string&,
                                     const std::string&,
-                                    const Array<float*>&);
+                                    const Array1D<float>&);
   template void Write1DArray<double>(const std::string&,
                                      const std::string&,
-                                     const Array<double*>&);
+                                     const Array1D<double>&);
 
   template void pyDefineRead1DArray<int>(py::module&);
   template void pyDefineRead1DArray<float>(py::module&);
