@@ -26,7 +26,14 @@ def test_ic_log():
 
     x_prtls = dist_prtls.EnergyBins().as_array()
     y_prtls = dist_prtls.F().as_array()
-    print(check_slope(x_prtls, y_prtls, -p, 1e3, 1e7))
+    assert check_slope(
+        x_prtls, y_prtls, -p, 1e3, 1e7
+    ), "Prtls power law slope check failed"
+
+    x_soft_photons, y_soft_photons = (
+        dist_soft_photons.EnergyBins().as_array(),
+        dist_soft_photons.F().as_array(),
+    )
 
     bins_eic = rg.Bins(rg.Logspace(1e3, 1e7, 200), rg.EnergyUnits.mec2)
 
@@ -34,4 +41,10 @@ def test_ic_log():
 
     x_ic, y_ic = bins_eic.as_array(), eic_2_f_ic.as_array()
 
-    print(check_slope(x_ic, y_ic, -p / 2 + 3 / 2, 2e3, 2e4))
+    assert check_slope(
+        x_ic, y_ic, -p / 2 + 3 / 2, 2e3, 2e4
+    ), "IC power law slope check failed"
+
+    assert np.isclose(
+        x_ic[np.argmax(y_ic)], e_break * 1e7**2, rtol=0.1
+    ), "IC peak energy check failed"

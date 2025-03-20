@@ -8,7 +8,9 @@
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include <array>
 #include <stdexcept>
@@ -19,6 +21,83 @@ namespace py   = pybind11;
 using namespace pybind11::literals;
 
 namespace rgnr {
+
+  template <dim_t D>
+  void Particles<D>::fromArrays(
+    const std::map<std::string, py::array_t<real_t>>& arrays,
+    bool                                              append) {
+    if ((not append) and is_allocated()) {
+      throw std::runtime_error("Particles already allocated, if you want to "
+                               "append, specify `append = True`");
+    }
+    std::size_t nprtls = 0;
+    for (const auto& [name, arr] : arrays) {
+      if (nprtls == 0) {
+        nprtls = arr.shape(0);
+      } else if (nprtls != arr.shape(0)) {
+        throw std::runtime_error("Inconsistent number of particles");
+      }
+    }
+    if (nprtls == 0) {
+      throw std::runtime_error("No particles provided");
+    }
+    std::size_t start = 0;
+    if (is_allocated()) {
+      start = m_nactive;
+      if (start + nprtls > m_nalloc) {
+        reallocate(m_nactive + nprtls);
+      }
+    } else {
+      allocate(nprtls);
+    }
+    auto slice = std::pair<std::size_t, std::size_t> { start, start + nprtls };
+    bool has_coords = not m_coords_ignored;
+    auto X_h = Kokkos::create_mirror_view(Kokkos::subview(X, slice, Kokkos::ALL));
+    for (auto d = 0u; d < D; ++d) {
+      std::string x_str = "X" + std::to_string(d + 1);
+      if (arrays.find(x_str) != arrays.end()) {
+        has_coords = true;
+        auto x_arr = arrays.at(x_str);
+        for (auto i = 0u; i < nprtls; ++i) {
+          X_h(i, d) = x_arr.at(i);
+        }
+      }
+    }
+    setIgnoreCoords(not has_coords);
+    if (has_coords) {
+      Kokkos::deep_copy(Kokkos::subview(X, slice, Kokkos::ALL), X_h);
+    }
+    auto U_h = Kokkos::create_mirror_view(Kokkos::subview(U, slice, Kokkos::ALL));
+    auto E_h = Kokkos::create_mirror_view(Kokkos::subview(E, slice, Kokkos::ALL));
+    auto B_h = Kokkos::create_mirror_view(Kokkos::subview(B, slice, Kokkos::ALL));
+    for (const auto& q : { "U", "E", "B" }) {
+      for (auto d = 0u; d < 3; ++d) {
+        std::string q_str = std::string(q) + std::to_string(d + 1);
+        if (arrays.find(q_str) != arrays.end()) {
+          if (std::string(q) == "U") {
+            auto u_arr = arrays.at(q_str);
+            for (auto i = 0u; i < nprtls; ++i) {
+              U_h(i, d) = u_arr.at(i);
+            }
+          } else if (std::string(q) == "E") {
+            auto e_arr = arrays.at(q_str);
+            for (auto i = 0u; i < nprtls; ++i) {
+              E_h(i, d) = e_arr.at(i);
+            }
+          } else if (std::string(q) == "B") {
+            auto b_arr = arrays.at(q_str);
+            for (auto i = 0u; i < nprtls; ++i) {
+              B_h(i, d) = b_arr.at(i);
+            }
+          }
+        }
+      }
+    }
+    Kokkos::deep_copy(Kokkos::subview(U, slice, Kokkos::ALL), U_h);
+    Kokkos::deep_copy(Kokkos::subview(E, slice, Kokkos::ALL), E_h);
+    Kokkos::deep_copy(Kokkos::subview(B, slice, Kokkos::ALL), B_h);
+    setNactive(start + nprtls);
+  }
 
   template <dim_t D>
   void Particles<D>::setNactive(std::size_t nactive) {
@@ -47,6 +126,64 @@ namespace rgnr {
     E              = Kokkos::View<real_t* [3]> { "E", nalloc };
     B              = Kokkos::View<real_t* [3]> { "B", nalloc };
     m_is_allocated = true;
+    m_nalloc       = nalloc;
+  }
+
+  template <dim_t D>
+  void Particles<D>::reallocate(std::size_t nalloc) {
+    if (!is_allocated()) {
+      throw std::runtime_error("Particles not allocated, if you want to "
+                               "allocate, call `allocate` instead");
+    }
+    if (nalloc <= m_nalloc) {
+      throw std::runtime_error(
+        "New allocation size must be greater than the current one");
+    }
+    if (not m_coords_ignored) {
+      auto X_bckp = Kokkos::View<real_t* [D]> {
+        "X_bckp", m_nalloc
+      };
+      Kokkos::deep_copy(X_bckp, X);
+      X = Kokkos::View<real_t* [D]> {
+        "X", nalloc
+      };
+      Kokkos::deep_copy(
+        Kokkos::subview(X,
+                        std::pair<std::size_t, std::size_t> { 0, m_nalloc },
+                        Kokkos::ALL),
+        X_bckp);
+    }
+    {
+      auto U_bckp = Kokkos::View<real_t* [3]> { "U_bckp", m_nalloc };
+      Kokkos::deep_copy(U_bckp, U);
+      U = Kokkos::View<real_t* [3]> { "U", nalloc };
+      Kokkos::deep_copy(
+        Kokkos::subview(U,
+                        std::pair<std::size_t, std::size_t> { 0, m_nalloc },
+                        Kokkos::ALL),
+        U_bckp);
+    }
+    {
+      auto E_bckp = Kokkos::View<real_t* [3]> { "E_bckp", m_nalloc };
+      Kokkos::deep_copy(E_bckp, E);
+      E = Kokkos::View<real_t* [3]> { "E", nalloc };
+      Kokkos::deep_copy(
+        Kokkos::subview(E,
+                        std::pair<std::size_t, std::size_t> { 0, m_nalloc },
+                        Kokkos::ALL),
+        E_bckp);
+    }
+    {
+      auto B_bckp = Kokkos::View<real_t* [3]> { "B_bckp", m_nalloc };
+      Kokkos::deep_copy(B_bckp, B);
+      B = Kokkos::View<real_t* [3]> { "B", nalloc };
+      Kokkos::deep_copy(
+        Kokkos::subview(B,
+                        std::pair<std::size_t, std::size_t> { 0, m_nalloc },
+                        Kokkos::ALL),
+        B_bckp);
+    }
+    m_nalloc = nalloc;
   }
 
   template <dim_t D>
@@ -130,7 +267,7 @@ namespace rgnr {
         throw std::runtime_error(
           "Number of particles to print exceeds allocated space");
       }
-      py::print(" [", m_nactive, "/", U.extent(0), "]");
+      py::print(" [", m_nactive, "/", m_nalloc, "]");
       py::print(" showing", start, "to", start + number);
       const auto nelems = std::min(m_nactive, number);
       const auto slice  = std::make_pair(static_cast<int>(start),
@@ -217,28 +354,33 @@ namespace rgnr {
     }
     Array1D<real_t> Arr {};
     Arr.data = Kokkos::View<real_t*> { name + "_" + std::to_string(comp + 1), n };
-    Kokkos::deep_copy(Arr.data, Kokkos::subview(view, Kokkos::ALL, comp));
+    Kokkos::deep_copy(
+      Arr.data,
+      Kokkos::subview(view, std::pair<std::size_t, std::size_t> { 0u, n }, comp));
     return Arr;
   }
 
   template <dim_t D>
   auto Particles<D>::Xarr(std::size_t d) const -> Array1D<real_t> {
-    return getSubview<D>("X", d, m_nactive, X);
+    if (m_coords_ignored) {
+      throw std::runtime_error("Particle coordinates ignored");
+    }
+    return getSubview<D>("X", d - 1, m_nactive, X);
   }
 
   template <dim_t D>
   auto Particles<D>::Uarr(std::size_t d) const -> Array1D<real_t> {
-    return getSubview<3>("U", d, m_nactive, U);
+    return getSubview<3>("U", d - 1, m_nactive, U);
   }
 
   template <dim_t D>
   auto Particles<D>::Earr(std::size_t d) const -> Array1D<real_t> {
-    return getSubview<3>("E", d, m_nactive, E);
+    return getSubview<3>("E", d - 1, m_nactive, E);
   }
 
   template <dim_t D>
   auto Particles<D>::Barr(std::size_t d) const -> Array1D<real_t> {
-    return getSubview<3>("B", d, m_nactive, B);
+    return getSubview<3>("B", d - 1, m_nactive, B);
   }
 
   template <dim_t D>
@@ -247,6 +389,18 @@ namespace rgnr {
       .def(py::init<const std::string&>())
       .def("__repr__", &Particles<D>::repr)
       .def("__len__", &Particles<D>::nactive)
+      .def("fromArrays", &Particles<D>::fromArrays, "arrays"_a, "append"_a = false, R"rgnrdoc(
+        Initialize the particles from a dictionary of arrays
+
+        Parameters
+        ----------
+        arrays : dict
+          Dictionary of arrays with keys X1, X2, X3, U1, U2, U3, E1, E2, E3, B1, B2, B3
+          If unspecified, the corresponding components are assumed to be zero
+
+        append : bool
+          Whether to append the particles to the existing ones [default: False]
+      )rgnrdoc")
       .def("setNactive", &Particles<D>::setNactive)
       .def("setIgnoreCoords", &Particles<D>::setIgnoreCoords)
       .def("allocate", &Particles<D>::allocate)
@@ -267,6 +421,7 @@ namespace rgnr {
           )rgnrdoc")
       .def("is_allocated", &Particles<D>::is_allocated)
       .def("nactive", &Particles<D>::nactive)
+      .def("nalloc", &Particles<D>::nalloc)
       .def("label", &Particles<D>::label)
       .def("energyDistribution",
            &Particles<D>::energyDistribution,

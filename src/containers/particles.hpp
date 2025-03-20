@@ -8,6 +8,8 @@
 #include "containers/distributions.hpp"
 
 #include <Kokkos_Core.hpp>
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
 
 #include <string>
 
@@ -20,8 +22,12 @@ namespace rgnr {
 
     Particles(const std::string& label) : m_label { label } {}
 
+    void fromArrays(const std::map<std::string, py::array_t<real_t>>&,
+                    bool = false);
+
     auto range() const -> Kokkos::RangePolicy<>;
     void allocate(std::size_t);
+    void reallocate(std::size_t);
 
     // setters
     void setNactive(std::size_t);
@@ -30,6 +36,10 @@ namespace rgnr {
     // getters
     auto is_allocated() const -> bool {
       return m_is_allocated;
+    }
+
+    auto nalloc() const -> std::size_t {
+      return m_nalloc;
     }
 
     auto nactive() const -> std::size_t {
@@ -56,6 +66,7 @@ namespace rgnr {
     bool        m_is_allocated { false };
     bool        m_coords_ignored { false };
     std::size_t m_nactive { 0 };
+    std::size_t m_nalloc { 0 };
 
     const std::string m_label;
   };
