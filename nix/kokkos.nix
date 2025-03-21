@@ -1,5 +1,6 @@
 {
   pkgs ? import <nixpkgs> { },
+  openmp,
   arch,
   gpu,
 }:
@@ -50,14 +51,17 @@ pkgs.stdenv.mkDerivation {
 
   propagatedBuildInputs = compilerPkgs.${gpu};
 
-  cmakeFlags = [
-    "-D CMAKE_CXX_STANDARD=17"
-    "-D CMAKE_CXX_EXTENSIONS=OFF"
-    "-D CMAKE_POSITION_INDEPENDENT_CODE=TRUE"
-    "-D Kokkos_ARCH_${getArch { }}=ON"
-    (if gpu != "none" then "-D Kokkos_ENABLE_${gpu}=ON" else "")
-    "-D CMAKE_BUILD_TYPE=Release"
-  ] ++ cmakeFlags.${gpu};
+  cmakeFlags =
+    [
+      "-D CMAKE_CXX_STANDARD=17"
+      "-D CMAKE_CXX_EXTENSIONS=OFF"
+      "-D CMAKE_POSITION_INDEPENDENT_CODE=TRUE"
+      "-D Kokkos_ARCH_${getArch { }}=ON"
+      "-D CMAKE_BUILD_TYPE=Release"
+    ]
+    ++ cmakeFlags.${gpu}
+    ++ (if gpu != "NONE" then [ "-D Kokkos_ENABLE_${gpu}=ON" ] else [ ])
+    ++ (if openmp then [ "-D Kokkos_ENABLE_OPENMP=ON" ] else [ ]);
 
   enableParallelBuilding = true;
 }

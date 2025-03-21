@@ -72,7 +72,7 @@ namespace rgnr {
                                    real_t e_syn_at_g_syn) -> Array1D<real_t> {
     py::print("Computing synchrotron spectrum from a distribution",
               "flush"_a = true);
-    const auto fkernel_sync = sync::TabulateFfunc();
+    const auto fkernel_syn = sync::TabulateFfunc();
 
     const auto nbins_e_syn = bins_e_syn.extent(0);
     auto e_syn_2_f_syn = Kokkos::View<real_t*> { "e_syn_2_f_syn", nbins_e_syn };
@@ -92,7 +92,7 @@ namespace rgnr {
     Kokkos::parallel_for("SynchrotronSpectrum",
                          range_policy,
                          sync::KernelFromDist(dist_prtls,
-                                              fkernel_sync,
+                                              fkernel_syn,
                                               bins_e_syn,
                                               e_syn_2_f_syn_scat,
                                               g_syn,
@@ -111,8 +111,9 @@ namespace rgnr {
                            real_t              g_syn,
                            real_t e_syn_at_g_syn) -> Array1D<real_t> {
     py::print("Computing synchrotron spectrum for", prtls.label(), "flush"_a = true);
-    const auto fkernel_sync = sync::TabulateFfunc();
-    const auto nbins_e_syn  = bins_e_syn.extent(0);
+    const auto fkernel_syn = sync::TabulateFfunc();
+
+    const auto nbins_e_syn = bins_e_syn.extent(0);
 
     py::print(" Launching",
               ToHumanReadable(prtls.nactive() * nbins_e_syn, USE_POW10),
@@ -130,7 +131,7 @@ namespace rgnr {
     Kokkos::parallel_for("SynchrotronSpectrum",
                          range_policy,
                          sync::Kernel<D>(prtls,
-                                         fkernel_sync,
+                                         fkernel_syn,
                                          bins_e_syn,
                                          e_syn_2_f_syn_scat,
                                          B0,
@@ -182,10 +183,10 @@ namespace rgnr {
     m.def(("SynchrotronSpectrum_" + std::to_string(D) + "D").c_str(),
           &SynchrotronSpectrum<D>,
           "prtls"_a,
-          "esyn_bins"_a,
+          "bins_e_syn"_a,
           "B0"_a,
-          "gamma_syn"_a,
-          "esyn_at_gamma_syn"_a,
+          "g_syn"_a,
+          "e_syn_at_g_syn"_a,
           R"rgnrdoc(
       Compute the synchrotron spectrum for a set of particles
 

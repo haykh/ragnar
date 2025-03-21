@@ -1,5 +1,6 @@
 {
   pkgs ? import <nixpkgs> { },
+  openmp ? false,
   gpu ? "NONE",
   arch ? "NATIVE",
 }:
@@ -11,6 +12,7 @@ let
   kokkosPkg = (
     pkgs.callPackage ./kokkos.nix {
       inherit pkgs;
+      inherit openmp;
       arch = archUpper;
       gpu = gpuUpper;
     }
@@ -34,7 +36,7 @@ let
       CUDA = {
         Kokkos_ENABLE_CUDA = "ON";
       };
-      NONE = { };
+      NONE = (if openmp then { Kokkos_ENABLE_OPENMP = "ON"; } else { });
     };
   };
 in

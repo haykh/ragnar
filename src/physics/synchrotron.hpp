@@ -109,20 +109,20 @@ namespace rgnr {
       const real_t                m_Ffunc_xmin, m_Ffunc_xmax;
       const std::size_t           m_Ffunc_npoints;
 
-      const Kokkos::View<real_t*> m_esyn_bins_mc2;
+      const Kokkos::View<real_t*> m_bins_e_syn;
 
-      Kokkos::Experimental::ScatterView<real_t*> m_esyn2_dn_desyn_scat;
+      Kokkos::Experimental::ScatterView<real_t*> m_e_syn_2_f_syn_scat;
 
-      const real_t m_B0, m_gamma_syn, m_esyn_at_gamma_syn_mc2;
+      const real_t m_B0, m_g_syn, m_e_syn_at_g_syn;
 
     public:
       Kernel(const Particles<D>&            prtls,
              const TabulatedFunction<true>& f_func,
-             const Bins&                    esyn_bins,
-             const Kokkos::Experimental::ScatterView<real_t*>& esyn2_dn_desyn_scat,
+             const Bins&                    bins_e_syn,
+             const Kokkos::Experimental::ScatterView<real_t*>& e_syn_2_f_syn_scat,
              real_t B0,
-             real_t gamma_syn,
-             real_t esyn_at_gamma_syn)
+             real_t g_syn,
+             real_t e_syn_at_g_syn)
         : m_U { prtls.U }
         , m_E { prtls.E }
         , m_B { prtls.B }
@@ -131,23 +131,23 @@ namespace rgnr {
         , m_Ffunc_xmin { f_func.xMin() }
         , m_Ffunc_xmax { f_func.xMax() }
         , m_Ffunc_npoints { f_func.nPoints() }
-        , m_esyn_bins_mc2 { esyn_bins.data }
-        , m_esyn2_dn_desyn_scat { esyn2_dn_desyn_scat }
+        , m_bins_e_syn { bins_e_syn.data }
+        , m_e_syn_2_f_syn_scat { e_syn_2_f_syn_scat }
         , m_B0 { B0 }
-        , m_gamma_syn { gamma_syn }
-        , m_esyn_at_gamma_syn_mc2 { esyn_at_gamma_syn } {
-        if (esyn_bins.unit != EnergyUnits::mec2 and
-            esyn_bins.unit != EnergyUnits::mpc2) {
-          throw std::runtime_error("esyn_bins must be in units of mc^2");
+        , m_g_syn { g_syn }
+        , m_e_syn_at_g_syn { e_syn_at_g_syn } {
+        if (bins_e_syn.unit != EnergyUnits::mec2 and
+            bins_e_syn.unit != EnergyUnits::mpc2) {
+          throw std::runtime_error("bins_e_syn must be in units of mc^2");
         }
       }
 
       KOKKOS_INLINE_FUNCTION
       void operator()(std::size_t pidx, std::size_t eidx) const {
-        const auto photon_e_mc2 = m_esyn_bins_mc2(eidx);
+        const auto e_syn = m_bins_e_syn(eidx);
 
-        real_t peak_energy_mc2, chiR;
-        OmegaSync_ChiR(peak_energy_mc2,
+        real_t e_peak, chiR;
+        OmegaSync_ChiR(e_peak,
                        chiR,
                        m_U(pidx, in::x),
                        m_U(pidx, in::y),
@@ -159,28 +159,27 @@ namespace rgnr {
                        m_B(pidx, in::y),
                        m_B(pidx, in::z));
 
-        if (peak_energy_mc2 > 0.0) {
-          const auto Fval = InterpolateTabulatedFunction<LOGGRID>(
-            photon_e_mc2 / peak_energy_mc2,
-            m_Ffunc_x,
-            m_Ffunc_y,
-            m_Ffunc_npoints,
-            m_Ffunc_xmin,
-            m_Ffunc_xmax);
-          auto esyn2_dn_desyn_scat_acc   = m_esyn2_dn_desyn_scat.access();
-          esyn2_dn_desyn_scat_acc(eidx) += photon_e_mc2 * chiR * Fval;
+        if (e_peak > 0.0) {
+          const auto Fval = InterpolateTabulatedFunction<LOGGRID>(e_syn / e_peak,
+                                                                  m_Ffunc_x,
+                                                                  m_Ffunc_y,
+                                                                  m_Ffunc_npoints,
+                                                                  m_Ffunc_xmin,
+                                                                  m_Ffunc_xmax);
+          auto e_syn_2_f_syn_acc   = m_e_syn_2_f_syn_scat.access();
+          e_syn_2_f_syn_acc(eidx) += e_syn * chiR * Fval;
         }
       }
 
       /*
        * @in: ux, uy, uz, ex, ey, ez, bx, by, bz
-       * @out: peak_energy, chiR
+       * @out: e_peak, chiR
        *
-       * peak_energy = gamma^2 * chiR
+       * e_peak = gamma^2 * chiR
        * chiR = sqrt(e_perp^2 - (beta . e)^2)
        */
       KOKKOS_INLINE_FUNCTION
-      void OmegaSync_ChiR(real_t& peak_energy,
+      void OmegaSync_ChiR(real_t& e_peak,
                           real_t& chiR,
                           real_t  ux,
                           real_t  uy,
@@ -229,8 +228,7 @@ namespace rgnr {
                                                e_plus_beta_cross_b_z;
 
         chiR = math::sqrt(e_plus_beta_cross_b_Sqr - beta_dot_e * beta_dot_e) / m_B0;
-        peak_energy = m_esyn_at_gamma_syn_mc2 * gamma * gamma * chiR /
-                      (m_gamma_syn * m_gamma_syn);
+        e_peak = m_e_syn_at_g_syn * gamma * gamma * chiR / (m_g_syn * m_g_syn);
       }
     };
 

@@ -15,7 +15,7 @@ using slice_t = std::pair<std::size_t, std::size_t>;
 enum in {
   x = 0,
   y = 1,
-  z = 1
+  z = 2
 };
 
 struct EnergyUnits {
