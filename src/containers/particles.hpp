@@ -50,7 +50,7 @@ namespace rgnr {
       return m_label;
     }
 
-    void printHead(std::size_t = 0, std::size_t = 5) const;
+    void printHead(std::size_t = 5, std::size_t = 0) const;
     auto repr() const -> std::string;
 
     // computes dN / de, where E is gamma or gamma * beta

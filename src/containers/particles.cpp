@@ -260,18 +260,17 @@ namespace rgnr {
   }
 
   template <dim_t D>
-  void Particles<D>::printHead(std::size_t start, std::size_t number) const {
+  void Particles<D>::printHead(std::size_t number, std::size_t start) const {
     py::print("Particles:", m_label);
     if (is_allocated()) {
-      if (start + number > m_nactive) {
+      if (start + number > m_nalloc) {
         throw std::runtime_error(
           "Number of particles to print exceeds allocated space");
       }
       py::print(" [", m_nactive, "/", m_nalloc, "]");
       py::print(" showing", start, "to", start + number);
-      const auto nelems = std::min(m_nactive, number);
-      const auto slice  = std::make_pair(static_cast<int>(start),
-                                        static_cast<int>(nelems));
+      const auto slice = std::pair<std::size_t, std::size_t> { start,
+                                                               start + number };
 
       if (not m_coords_ignored) { // print X
         auto X_h = Kokkos::create_mirror_view(
@@ -283,7 +282,7 @@ namespace rgnr {
           if (start > 0) {
             py::print("...", "end"_a = "");
           }
-          for (auto i = 0u; i < nelems; ++i) {
+          for (auto i = 0u; i < number; ++i) {
             py::print(X_h(i, d), "end"_a = "");
           }
           if (m_nactive > number) {
@@ -316,10 +315,10 @@ namespace rgnr {
             if (start > 0) {
               py::print("...", "end"_a = "");
             }
-            for (auto i = 0u; i < nelems; ++i) {
+            for (auto i = 0u; i < number; ++i) {
               py::print(quantities_view[q](i, d), " ", "end"_a = "");
             }
-            if (m_nactive > number) {
+            if (m_nalloc > start + number) {
               py::print("...");
             } else {
               py::print();
@@ -406,18 +405,18 @@ namespace rgnr {
       .def("allocate", &Particles<D>::allocate)
       .def("printHead",
            &Particles<D>::printHead,
-           "start"_a  = 0,
            "number"_a = 5,
+           "start"_a  = 0,
            R"rgnrdoc(
               Print the first `number` particles starting from `start`
 
               Parameters
               ----------
-              start : int
-                Starting index [default: 0]
-
               number : int
                 Number of particles to print [default: 5]
+
+              start : int
+                Starting index [default: 0]
           )rgnrdoc")
       .def("is_allocated", &Particles<D>::is_allocated)
       .def("nactive", &Particles<D>::nactive)
