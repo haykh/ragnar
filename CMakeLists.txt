@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 cmake_policy(VERSION 3.16)
-project(Ragnar LANGUAGES C CXX)
+
+set(LIBRARY ragnar)
+project(${LIBRARY} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -20,7 +22,6 @@ endif()
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies.cmake)
 
 # main code
-set(LIBRARY ragnar)
 set(SUBDIRS utils containers physics)
 set(DEPS rgnr_utils rgnr_containers rgnr_physics)
 
@@ -46,6 +47,8 @@ pybind11_add_module(${LIBRARY} ${SOURCES})
 
 add_dependencies(${LIBRARY} ${DEPS})
 target_link_libraries(${LIBRARY} PUBLIC ${DEPS})
+
+install(TARGETS ${LIBRARY} LIBRARY DESTINATION .)
 
 include(CTest)
 enable_testing()

@@ -1,7 +1,7 @@
 # Ragnar [ᚱᛅᚴᚾᛅᚱᛦ]
-## Radiative post-processing code for PIC simulations
+## Radiative post-processing code
 
-Written in C++ with `Kokkos` portability and `python` API via `pybind11`.
+Written in C++ with `Kokkos` portability and `python` API via `pybind11`. Supports loading data from PIC simulations for post-processing.
 
 ## Usage
 
@@ -12,17 +12,28 @@ git clone --recursive https://github.com/haykh/ragnar.git
 cd ragnar
 ```
 
-Compile with:
+You can build/install the package with pip using the following command:
 
 ```sh
-cmake -B build [-D Kokkos_ENABLE_CUDA=ON] ...
+pip install . --config-settings="cmake.args=<FLAGS>"
+```
+
+All the CMake flags can be passed in the `cmake.args` as shown above, e.g., `cmake.args=-DRAGNAR_USE_HDF5:BOOL=OFF;-DKokkos_ENABLE_OPENMP:BOOL=ON;...`. 
+
+Otherwise, you can also compile the code to produce the shared library directly with CMake:
+
+```sh
+cmake -B build [-D RAGNAR_USE_HDF5:BOOL=OFF] [-D Kokkos_ENABLE_CUDA:BOOL=ON] ...
 cmake --build build -j
 ```
-> If `Kokkos` is installed externally, no special flags are needed here.
-
-Usage examples together with unit tests are located in `src/examples` and `src/tests`.
 
 Compilation produces a shared library file `.so` (located in `build/`) which can be imported directly in `python`. 
+
+> If `Kokkos` is installed externally, no special `-DKokkos_***` flags are needed.
+
+> If you don't intend to use `hdf5` for reading the simulation data, you may disable it by providing a flag `-DRAGNAR_USE_HDF5:BOOL=OFF` (it is set to `ON` by default).
+
+Usage examples together with unit tests are located in `src/examples` and `src/tests`.
 
 ```python
 import ragnar as rg
@@ -87,12 +98,22 @@ plt.xscale("log")
 plt.yscale("log")
 ```
 
+### Unit tests
+
+The code also has a set of unit tests that can be run after compilation using:
+
+```sh
+ctest --test-dir build
+```
+
+These tests are also ran using GitHub actions automatically on every push.
+
 ## Dependencies
 
 All the dependencies (except for `pybind11`) can be built in-tree (except for the HDF5), however, it is recommended to install them externally to speed up compilation.
 
 - [`Kokkos`](https://github.com/kokkos/kokkos)
-- [`HighFive`](https://github.com/highfive-devs/highfive)
+- [`HighFive`](https://github.com/highfive-devs/highfive) : optional (used when `-D RAGNAR_USE_HDF5=ON`)
 - [`pybind11`](https://github.com/pybind/pybind11) : no need to install
 
 > `pybind11` is downloaded with the code when you clone with `--recursive`.
