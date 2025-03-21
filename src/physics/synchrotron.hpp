@@ -1,87 +1,153 @@
 #ifndef PHYSICS_SYNCHROTRON_HPP
 #define PHYSICS_SYNCHROTRON_HPP
 
-#include "utils/tabulation.h"
-#include "utils/types.h"
+#include "utils/global.h"
 
-#include "containers/dimensionals.hpp"
+#include "containers/array.hpp"
+#include "containers/distributions.hpp"
 #include "containers/particles.hpp"
+#include "containers/tabulation.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
+#include <pybind11/pybind11.h>
 
 #include <stdexcept>
-#include <string>
 
 namespace math = Kokkos;
+namespace py   = pybind11;
 
 namespace rgnr {
+
   namespace sync {
 
     auto Ffunc_integrand(real_t x) -> real_t;
 
-    auto TabulateFfunc(std::size_t npoints = 200,
-                       real_t      xmin    = static_cast<real_t>(1e-6),
-                       real_t      xmax    = static_cast<real_t>(100))
-      -> TabulatedFunction<true>;
+    auto TabulateFfunc(
+      std::size_t npoints = 200,
+      real_t      xmin    = static_cast<real_t>(1e-6),
+      real_t      xmax = static_cast<real_t>(100)) -> TabulatedFunction<true>;
 
     /*
-     * Computes `E dN / d(ln E)` or `E dN / dE` for synchrotron radiation
-     * - if photon_energy_bins is logarithmically spaced --> `E^2 dN / dE`
-     * - if photon_energy_bins is linearly spaced --> `E dN / dE`
+     * Computes `E dN / d(ln E)` or `E dN / dE`
+     * ... for synchrotron radiation from a given distribution
+     * - if esyn_bins is logarithmically spaced --> `E^2 dN / dE`
+     * - if esyn_bins is linearly spaced --> `E dN / dE`
      */
-    template <dim_t D>
-    class Kernel {
-      const Kokkos::View<real_t* [3]> m_U, m_E, m_B;
-      const std::size_t               m_nprtls;
+    class KernelFromDist {
+      const Kokkos::View<real_t*> m_bins_gbeta_prtls, m_f_prtls;
+      const bool                  m_islog_bins_prtls;
 
       const Kokkos::View<real_t*> m_Ffunc_x, m_Ffunc_y;
       const real_t                m_Ffunc_xmin, m_Ffunc_xmax;
       const std::size_t           m_Ffunc_npoints;
 
-      const Kokkos::View<real_t*> m_photon_energy_bins_mc2;
+      const Kokkos::View<real_t*> m_bins_e_syn;
 
-      Kokkos::Experimental::ScatterView<real_t*> m_photon_spectrum;
+      Kokkos::Experimental::ScatterView<real_t*> m_e_syn_2_f_syn_scat;
 
-      const real_t m_B0, m_gamma_syn, m_photon_energy_at_gamma_syn_mc2;
+      const real_t m_g_syn, m_e_syn_at_g_syn;
 
     public:
-      Kernel(const Particles<D>&                  prtls,
-             const TabulatedFunction<true>&       f_func,
-             const DimensionalArray<EnergyUnits>& photon_energy_bins,
-             const Kokkos::Experimental::ScatterView<real_t*>& photon_spectrum,
-             real_t                                            B0,
-             real_t                                            gamma_syn,
-             const DimensionalQuantity<EnergyUnits>&           eps_at_gamma_syn)
+      KernelFromDist(
+        const TabulatedDistribution&                      prtls,
+        const TabulatedFunction<true>&                    fkernel_sync,
+        const Bins&                                       bins_e_syn,
+        const Kokkos::Experimental::ScatterView<real_t*>& e_syn_2_f_syn_scat,
+        real_t                                            g_syn,
+        real_t                                            e_syn_at_g_syn)
+        : m_bins_gbeta_prtls { prtls.EnergyBins().data }
+        , m_f_prtls { prtls.F().data }
+        , m_islog_bins_prtls { prtls.log_spaced() }
+        , m_Ffunc_x { fkernel_sync.xView() }
+        , m_Ffunc_y { fkernel_sync.yView() }
+        , m_Ffunc_xmin { fkernel_sync.xMin() }
+        , m_Ffunc_xmax { fkernel_sync.xMax() }
+        , m_Ffunc_npoints { fkernel_sync.nPoints() }
+        , m_bins_e_syn { bins_e_syn.data }
+        , m_e_syn_2_f_syn_scat { e_syn_2_f_syn_scat }
+        , m_g_syn { g_syn }
+        , m_e_syn_at_g_syn { e_syn_at_g_syn } {}
+
+      KOKKOS_INLINE_FUNCTION
+      void operator()(std::size_t gbidx, std::size_t eidx) const {
+        const auto e_syn       = m_bins_e_syn(eidx);
+        const auto gbeta_prtls = m_bins_gbeta_prtls(gbidx);
+        const auto f_prtls     = m_f_prtls(gbidx);
+
+        const auto e_peak = m_e_syn_at_g_syn * gbeta_prtls * gbeta_prtls /
+                            (m_g_syn * m_g_syn);
+
+        if (e_peak > 0.0) {
+          const auto Fval = InterpolateTabulatedFunction<LOGGRID>(e_syn / e_peak,
+                                                                  m_Ffunc_x,
+                                                                  m_Ffunc_y,
+                                                                  m_Ffunc_npoints,
+                                                                  m_Ffunc_xmin,
+                                                                  m_Ffunc_xmax);
+          auto e_syn_2_f_syn_acc = m_e_syn_2_f_syn_scat.access();
+          if (m_islog_bins_prtls) {
+            e_syn_2_f_syn_acc(eidx) += f_prtls * e_syn * gbeta_prtls * Fval;
+          } else {
+            e_syn_2_f_syn_acc(eidx) += f_prtls * e_syn * Fval;
+          }
+        }
+      }
+    };
+
+    /*
+     * Computes `E dN / d(ln E)` or `E dN / dE` for synchrotron radiation
+     * ... from a given population of particles
+     * - if esyn_bins is logarithmically spaced --> `E^2 dN / dE`
+     * - if esyn_bins is linearly spaced --> `E dN / dE`
+     */
+    template <dim_t D>
+    class Kernel {
+      const Kokkos::View<real_t* [3]> m_U, m_E, m_B;
+
+      const Kokkos::View<real_t*> m_Ffunc_x, m_Ffunc_y;
+      const real_t                m_Ffunc_xmin, m_Ffunc_xmax;
+      const std::size_t           m_Ffunc_npoints;
+
+      const Kokkos::View<real_t*> m_bins_e_syn;
+
+      Kokkos::Experimental::ScatterView<real_t*> m_e_syn_2_f_syn_scat;
+
+      const real_t m_B0, m_g_syn, m_e_syn_at_g_syn;
+
+    public:
+      Kernel(const Particles<D>&            prtls,
+             const TabulatedFunction<true>& f_func,
+             const Bins&                    bins_e_syn,
+             const Kokkos::Experimental::ScatterView<real_t*>& e_syn_2_f_syn_scat,
+             real_t B0,
+             real_t g_syn,
+             real_t e_syn_at_g_syn)
         : m_U { prtls.U }
         , m_E { prtls.E }
         , m_B { prtls.B }
-        , m_nprtls { prtls.nactive() }
-        , m_Ffunc_x { f_func.xArr() }
-        , m_Ffunc_y { f_func.yArr() }
+        , m_Ffunc_x { f_func.xView() }
+        , m_Ffunc_y { f_func.yView() }
         , m_Ffunc_xmin { f_func.xMin() }
         , m_Ffunc_xmax { f_func.xMax() }
         , m_Ffunc_npoints { f_func.nPoints() }
-        , m_photon_energy_bins_mc2 { photon_energy_bins.data }
-        , m_photon_spectrum { photon_spectrum }
+        , m_bins_e_syn { bins_e_syn.data }
+        , m_e_syn_2_f_syn_scat { e_syn_2_f_syn_scat }
         , m_B0 { B0 }
-        , m_gamma_syn { gamma_syn }
-        , m_photon_energy_at_gamma_syn_mc2 { eps_at_gamma_syn.value } {
-        if (photon_energy_bins.unit() != EnergyUnits::mc2) {
-          throw std::runtime_error(
-            "photon_energy_bins must be in units of mc^2");
-        }
-        if (eps_at_gamma_syn.unit() != EnergyUnits::mc2) {
-          throw std::runtime_error("eps_at_gamma_syn must be in units of mc^2");
+        , m_g_syn { g_syn }
+        , m_e_syn_at_g_syn { e_syn_at_g_syn } {
+        if (bins_e_syn.unit != EnergyUnits::mec2 and
+            bins_e_syn.unit != EnergyUnits::mpc2) {
+          throw std::runtime_error("bins_e_syn must be in units of mc^2");
         }
       }
 
       KOKKOS_INLINE_FUNCTION
       void operator()(std::size_t pidx, std::size_t eidx) const {
-        const auto photon_e_mc2 = m_photon_energy_bins_mc2(eidx);
+        const auto e_syn = m_bins_e_syn(eidx);
 
-        real_t peak_energy_mc2, chiR;
-        OmegaSync_ChiR(peak_energy_mc2,
+        real_t e_peak, chiR;
+        OmegaSync_ChiR(e_peak,
                        chiR,
                        m_U(pidx, in::x),
                        m_U(pidx, in::y),
@@ -93,28 +159,27 @@ namespace rgnr {
                        m_B(pidx, in::y),
                        m_B(pidx, in::z));
 
-        if (peak_energy_mc2 > 0.0) {
-          const auto Fval = InterpolateTabulatedFunction<LOGGRID>(
-            photon_e_mc2 / peak_energy_mc2,
-            m_Ffunc_x,
-            m_Ffunc_y,
-            m_Ffunc_npoints,
-            m_Ffunc_xmin,
-            m_Ffunc_xmax);
-          auto photon_spectrum_acc   = m_photon_spectrum.access();
-          photon_spectrum_acc(eidx) += photon_e_mc2 * chiR * Fval;
+        if (e_peak > 0.0) {
+          const auto Fval = InterpolateTabulatedFunction<LOGGRID>(e_syn / e_peak,
+                                                                  m_Ffunc_x,
+                                                                  m_Ffunc_y,
+                                                                  m_Ffunc_npoints,
+                                                                  m_Ffunc_xmin,
+                                                                  m_Ffunc_xmax);
+          auto e_syn_2_f_syn_acc   = m_e_syn_2_f_syn_scat.access();
+          e_syn_2_f_syn_acc(eidx) += e_syn * chiR * Fval;
         }
       }
 
       /*
        * @in: ux, uy, uz, ex, ey, ez, bx, by, bz
-       * @out: peak_energy, chiR
+       * @out: e_peak, chiR
        *
-       * peak_energy = gamma^2 * chiR
+       * e_peak = gamma^2 * chiR
        * chiR = sqrt(e_perp^2 - (beta . e)^2)
        */
       KOKKOS_INLINE_FUNCTION
-      void OmegaSync_ChiR(real_t& peak_energy,
+      void OmegaSync_ChiR(real_t& e_peak,
                           real_t& chiR,
                           real_t  ux,
                           real_t  uy,
@@ -163,20 +228,25 @@ namespace rgnr {
                                                e_plus_beta_cross_b_z;
 
         chiR = math::sqrt(e_plus_beta_cross_b_Sqr - beta_dot_e * beta_dot_e) / m_B0;
-        peak_energy = m_photon_energy_at_gamma_syn_mc2 * gamma * gamma * chiR /
-                      (m_gamma_syn * m_gamma_syn);
+        e_peak = m_e_syn_at_g_syn * gamma * gamma * chiR / (m_g_syn * m_g_syn);
       }
     };
 
   } // namespace sync
 
+  auto SynchrotronSpectrumFromDist(const TabulatedDistribution&,
+                                   const Bins&,
+                                   real_t,
+                                   real_t) -> Array1D<real_t>;
+
   template <dim_t D>
-  auto SynchrotronSpectrum(const Particles<D>&,
-                           const DimensionalArray<EnergyUnits>&,
-                           real_t,
-                           real_t,
-                           const DimensionalQuantity<EnergyUnits>&)
-    -> Kokkos::View<real_t*>;
+  auto SynchrotronSpectrum(const Particles<D>&, const Bins&, real_t, real_t, real_t)
+    -> Array1D<real_t>;
+
+  template <dim_t D>
+  void pyDefineSynchrotronSpectrum(py::module&);
+
+  void pyDefineSynchrotronSpectrumFromDist(py::module&);
 
 } // namespace rgnr
 

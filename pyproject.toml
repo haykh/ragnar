@@ -1,0 +1,45 @@
+[build-system]
+  requires      = ["scikit-build-core", "pybind11"]
+  build-backend = "scikit_build_core.build"
+
+[project]
+  name = "ragnar"
+  version = "0.9.0"
+  dependencies = ["numpy"]
+  requires-python = ">=3.8"
+  authors = [{ name = "Hayk", email = "haykh.astro@gmail.com" }]
+  maintainers = [{ name = "Hayk", email = "haykh.astro@gmail.com" }]
+  description = "Radiative post-processing code"
+  readme = "README.md"
+  license = { file = "LICENSE" }
+  classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+  ]
+
+  [project.urls]
+    Repository = "https://github.com/haykh/ragnar"
+
+  [project.optional-dependencies]
+    test = ["pytest"]
+
+[tool.scikit-build]
+  cmake.version       = ">=3.16"
+  cmake.build-type    = "Release"
+  wheel.license-files = ["LICENSE"]
+  wheel.cmake         = true
+  editable.mode       = "redirect"
+  editable.verbose    = true
+  editable.rebuild    = false
+  build.tool-args     = []
+  build.targets       = []
+  build.verbose       = true

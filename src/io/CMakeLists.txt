@@ -1,7 +1,9 @@
 set(LIB rgnr_io)
 set(DEPS rgnr_utils)
 
-add_library(${LIB})
+file(GLOB_RECURSE SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
+
+add_library(${LIB} ${SOURCES})
 target_link_libraries(${LIB} PUBLIC ${DEPS})
 
 target_include_directories(

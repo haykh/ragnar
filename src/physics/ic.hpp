@@ -1,146 +1,99 @@
 #ifndef PHYSICS_IC_HPP
 #define PHYSICS_IC_HPP
 
-#include "utils/types.h"
+#include "utils/global.h"
 
-#include "containers/dimensionals.hpp"
-#include "containers/particles.hpp"
+#include "containers/array.hpp"
+#include "containers/distributions.hpp"
 
 #include <Kokkos_Core.hpp>
 #include <Kokkos_ScatterView.hpp>
-
-#include <iostream>
-#include <map>
-#include <string>
+#include <pybind11/pybind11.h>
 
 namespace math = Kokkos;
+namespace py   = pybind11;
 
 namespace rgnr {
+
   namespace ic {
 
     KOKKOS_INLINE_FUNCTION
     auto KNfunc(real_t Gamma, real_t q) -> real_t {
-      return 2 * q * math::log(q) + (1 + 2 * q) * (1 - q) +
-             0.5 * (1 - q) * (Gamma * q) * (Gamma * q) / (1 + Gamma * q);
+      const real_t Gq = Gamma * q;
+      return 2 * q * math::log(q) +
+             (1 - q) * ((1 + 2 * q) + 0.5 * (Gq) * (Gq) / (1 + Gq));
     }
 
     /*
-     * Computes `E dN / d(ln E)` or `E dN / dE` for IC radiation
-     * - if photon_energy_bins is logarithmically spaced --> `E^2 dN / dE`
-     * - if photon_energy_bins is linearly spaced --> `E dN / dE`
+     * Computes `E_ic^2 f(E_ic)`
      */
-    template <class S>
     class Kernel {
-      const Kokkos::View<real_t*> m_prtl_energy_bins;
-      const Kokkos::View<real_t*> m_prtl_energy_distribution;
-
-      const S m_soft_photon_distribution;
-
-      const Kokkos::View<real_t*> m_soft_photon_energy_bins;
-
-      const Kokkos::View<real_t*> m_photon_energy_bins;
-
-      Kokkos::Experimental::ScatterView<real_t*> m_photon_spectrum;
-
-      const real_t m_gamma_scale, m_mc2;
+      const Kokkos::View<real_t*>                m_bins_g_prtls;
+      const Kokkos::View<real_t*>                m_f_prtls;
+      const bool                                 m_islog_bins_prtls;
+      const Kokkos::View<real_t*>                m_bins_e_soft_photons;
+      const Kokkos::View<real_t*>                m_f_soft_photons;
+      const Kokkos::View<real_t*>                m_bins_e_ic;
+      Kokkos::Experimental::ScatterView<real_t*> m_e_ic_2_f_ic_scat;
 
     public:
-      Kernel(const Kokkos::View<real_t*>&         prtl_energy_bins,
-             const Kokkos::View<real_t*>&         prtl_energy_distribution,
-             const DimensionalArray<EnergyUnits>& soft_photon_energy_bins,
-             const S&                             soft_photon_distribution,
-             const DimensionalArray<EnergyUnits>& photon_energy_bins,
-             const Kokkos::Experimental::ScatterView<real_t*>& photon_spectrum,
-             real_t                                            gamma_scale,
-             const DimensionalQuantity<EnergyUnits>&           mc2)
-        : m_prtl_energy_bins { prtl_energy_bins }
-        , m_prtl_energy_distribution { prtl_energy_distribution }
-        , m_soft_photon_distribution { soft_photon_distribution }
-        , m_soft_photon_energy_bins { soft_photon_energy_bins.data }
-        , m_photon_energy_bins { photon_energy_bins.data }
-        , m_photon_spectrum { photon_spectrum }
-        , m_gamma_scale { gamma_scale }
-        , m_mc2 { mc2.value } {
-        soft_photon_distribution.assertDimension(soft_photon_energy_bins.unit());
-        if (photon_energy_bins.unit() != EnergyUnits::mc2) {
+      Kernel(const TabulatedDistribution& dist_prtls,
+             const TabulatedDistribution& dist_soft_photons,
+             const Bins&                  bins_e_ic,
+             const Kokkos::Experimental::ScatterView<real_t*>& e_ic_2_f_ic_scat)
+        : m_bins_g_prtls { dist_prtls.EnergyBins().data }
+        , m_f_prtls { dist_prtls.F().data }
+        , m_islog_bins_prtls { dist_prtls.log_spaced() }
+        , m_bins_e_soft_photons { dist_soft_photons.EnergyBins().data }
+        , m_f_soft_photons { dist_soft_photons.F().data }
+        , m_bins_e_ic { bins_e_ic.data }
+        , m_e_ic_2_f_ic_scat { e_ic_2_f_ic_scat } {
+        if (dist_soft_photons.EnergyBins().unit != EnergyUnits::mec2) {
           throw std::runtime_error(
-            "photon_energy_bins must be in units of mc^2");
+            "Soft photons energy bins must be in units of mec^2");
         }
-        if (mc2.unit() != soft_photon_energy_bins.unit()) {
-          throw std::runtime_error(
-            "mc2 must be in the same units as soft_photon_energy_bins");
+        if (bins_e_ic.unit != EnergyUnits::mec2) {
+          throw std::runtime_error("E_ic must be in units of mec^2");
         }
       }
 
       KOKKOS_INLINE_FUNCTION
       void operator()(std::size_t gidx, std::size_t eidx, std::size_t esidx) const {
-        const auto gamma   = m_prtl_energy_bins(gidx) * m_gamma_scale + 1.0;
-        const auto dn_prtl = m_prtl_energy_distribution(gidx);
+        const auto g_prtls = m_bins_g_prtls(gidx);
+        const auto f_prtls = m_f_prtls(gidx);
 
-        const auto eps_soft = m_soft_photon_energy_bins(esidx);
-        const auto dns      = m_soft_photon_distribution.dn(eps_soft);
+        const auto e_soft_photons = m_bins_e_soft_photons(esidx);
+        const auto f_soft_photons = m_f_soft_photons(esidx);
 
-        const auto eps_mc2 = m_photon_energy_bins(eidx);
+        const auto e_ic = m_bins_e_ic(eidx);
 
-        const auto Gamma = gamma * m_mc2 / (4 * eps_soft);
+        const auto Gamma = 4 * g_prtls * e_soft_photons;
 
-        if (eps_mc2 > gamma * Gamma / (1 + Gamma)) {
+        if (e_ic > g_prtls * Gamma / (1 + Gamma)) {
           return;
         }
-        const auto q = (eps_mc2 / gamma) / (Gamma * (1 - (eps_mc2 / gamma)));
+        const auto q = (e_ic / g_prtls) / (Gamma * (1 - (e_ic / g_prtls)));
 
         const auto KNval = KNfunc(Gamma, q);
 
-        auto photon_spectrum_acc   = m_photon_spectrum.access();
-        photon_spectrum_acc(eidx) += dn_prtl * (dns / eps_soft) * eps_mc2 *
-                                     KNval / (gamma * gamma);
+        auto e_ic_2_f_ic_acc = m_e_ic_2_f_ic_scat.access();
+        if (m_islog_bins_prtls) {
+          e_ic_2_f_ic_acc(eidx) += f_prtls * (f_soft_photons / e_soft_photons) *
+                                   e_ic * e_ic * KNval / g_prtls;
+        } else {
+          e_ic_2_f_ic_acc(eidx) += f_prtls * (f_soft_photons / e_soft_photons) *
+                                   e_ic * e_ic * KNval / (g_prtls * g_prtls);
+        }
       }
     };
 
   } // namespace ic
 
-  template <class S>
-  auto ICSpectrum(const Kokkos::View<real_t*>&         prtl_energy_bins,
-                  const Kokkos::View<real_t*>&         prtl_energy_distribution,
-                  const DimensionalArray<EnergyUnits>& soft_photon_energy_bins,
-                  const S&                             soft_photon_distribution,
-                  const DimensionalArray<EnergyUnits>& photon_energy_bins,
-                  real_t                               gamma_scale,
-                  const DimensionalQuantity<EnergyUnits>& mc2)
-    -> Kokkos::View<real_t*> {
-    std::cout << "Computing IC spectrum ..." << std::endl;
+  auto ICSpectrum(const TabulatedDistribution&,
+                  const TabulatedDistribution&,
+                  const Bins&) -> Array1D<real_t>;
 
-    const auto nprtl_bins = prtl_energy_bins.extent(0);
-    const auto nsoft_bins = soft_photon_energy_bins.data.extent(0);
-
-    const auto nphoton_bins = photon_energy_bins.data.extent(0);
-    auto photon_spectrum = Kokkos::View<real_t*> { "photon_spectrum", nphoton_bins };
-    auto photon_spectrum_scat = Kokkos::Experimental::create_scatter_view(
-      photon_spectrum);
-
-    std::cout << "  Launching "
-              << ToHumanReadable(nprtl_bins * nphoton_bins * nsoft_bins, USE_POW10)
-              << " threads" << std::endl;
-    const auto range_policy = Kokkos::MDRangePolicy<Kokkos::Rank<3>> {
-      {         0,            0,          0},
-      {nprtl_bins, nphoton_bins, nsoft_bins}
-    };
-    Kokkos::parallel_for("ICSpectrum",
-                         range_policy,
-                         ic::Kernel<S>(prtl_energy_bins,
-                                       prtl_energy_distribution,
-                                       soft_photon_energy_bins,
-                                       soft_photon_distribution,
-                                       photon_energy_bins,
-                                       photon_spectrum_scat,
-                                       gamma_scale,
-                                       mc2));
-    Kokkos::Experimental::contribute(photon_spectrum, photon_spectrum_scat);
-
-    Kokkos::fence();
-    std::cout << "  Spectrum computed : OK" << std::endl;
-    return photon_spectrum;
-  }
+  void pyDefineICSpectrum(py::module&);
 
 } // namespace rgnr
 
