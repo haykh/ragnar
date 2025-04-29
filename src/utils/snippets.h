@@ -11,10 +11,28 @@
 #include <limits>
 #include <string>
 #include <type_traits>
+#include <sstream>
+#include <stdexcept>
+#include <memory>
 
 namespace py = pybind11;
 
 namespace rgnr {
+
+namespace fmt {
+
+  template <typename... Args>
+    inline auto format(const char* format, Args... args) -> std::string {
+      auto size_s = std::snprintf(nullptr, 0, format, args...) + 1;
+      if (size_s <= 0) {
+        throw std::runtime_error("Error during formatting.");
+      }
+      auto                    size { static_cast<std::size_t>(size_s) };
+      std::unique_ptr<char[]> buf(new char[size]);
+      std::snprintf(buf.get(), size, format, args...);
+      return std::string(buf.get(), buf.get() + size - 1);
+    }
+  }
 
   auto Linspace(real_t, real_t, std::size_t) -> Array1D<real_t>;
   auto Logspace(real_t, real_t, std::size_t) -> Array1D<real_t>;
