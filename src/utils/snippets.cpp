@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <array>
-#include <format>
 #include <map>
 #include <string>
 
@@ -93,7 +92,7 @@ namespace rgnr {
           ++sidx;
         }
       }
-      return (negative ? "-" : "") + std::format("{:.2f}", value_double) + " " +
+      return (negative ? "-" : "") + fmt::format("%.2f", value_double) + " " +
              suffixes[sidx];
     } else {
       int pow = 0;
@@ -106,7 +105,7 @@ namespace rgnr {
           ++pow;
         }
       }
-      return (negative ? "-" : "") + std::format("{:.2f}", value_double) +
+      return (negative ? "-" : "") + fmt::format("%.2f", value_double) +
              "·10^" + std::to_string(pow);
     }
   }
