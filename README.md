@@ -125,6 +125,6 @@ You may install all of the dependencies using the `spack` package manager:
 ```sh
 spack env create ragnar
 spack env activate ragnar
-spack install --add kokkos [+cuda] [+wrapper] [gpu_arch=...]
+spack install --add kokkos [+cuda] [+wrapper] [cuda_arch=...]
 spack install --add highfive
 ```
